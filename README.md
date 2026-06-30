@@ -21,14 +21,14 @@
 
 ### Agent 安装
 
-把下面的 Prompt 发给本机 Agent，并替换 `<VAULT_PATH>` 和 `<GITHUB_REPO_URL>`。
+把下面的 Prompt 发给本机 Agent，并替换 `<VAULT_PATH>`。
 
 ```text
 将 “QMD 预览” Obsidian 插件安装到这个 Vault：<VAULT_PATH>
 
 插件信息：
 - 插件 ID：qmd-preview
-- GitHub 仓库：<GITHUB_REPO_URL>
+- GitHub 仓库：git@github.com:elliotxx/obsidian-qmd-preview.git
 - 目标 Obsidian vault：<VAULT_PATH>
 
 安装动作：
