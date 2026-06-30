@@ -5,6 +5,7 @@
 ```bash
 npm run lint
 npm test
+npm run release:validate
 npm run package
 ```
 
@@ -13,9 +14,11 @@ npm run package
 - ESLint 无报错。
 - TypeScript 构建通过。
 - 转换器单元测试通过。
+- `package.json`、`manifest.json`、`versions.json` 版本一致。
+- 发布资产路径：`release/manifest.json`、`release/main.js`、`release/styles.css`。
 - 发布包路径：`release/qmd-preview-v{version}.zip`。
 
-发布包包含：
+发布包和 GitHub Release 资产包含：
 
 ```text
 manifest.json

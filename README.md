@@ -1,53 +1,78 @@
-# QMD 预览
+# QMD Preview
 
-这是一个 Obsidian 桌面插件，用于在 Obsidian 中编辑 `.qmd` 文件，并在侧边栏实时预览。
+English | [简体中文](README.zh-CN.md)
 
-## 核心能力
+QMD Preview is an Obsidian desktop plugin for editing `.qmd` files and previewing them in a side pane.
 
-- 将 `.qmd` 注册为 Obsidian 可编辑的 Markdown 文件。
-- 在侧边栏显示当前 QMD 文件的实时预览。
-- 实时预览只做轻量转换，不执行代码。
-- 支持将 Quarto 代码单元格显示为普通代码块。
-- 支持将 Quarto callout 显示为 Obsidian callout。
-- 支持手动调用 Quarto CLI 生成官方 HTML 预览。
+The live preview is designed for writing feedback. It converts the parts of QMD that Obsidian does not render directly into Obsidian-compatible Markdown, then lets Obsidian render the result. When you need the final Quarto output, you can run an explicit Quarto render from the preview pane.
 
-## 工作原理
+## Features
 
-实时预览不会调用完整 Quarto 渲染器。插件监听当前 QMD 编辑器内容，把 Obsidian 不直接识别的少量 QMD 语法临时转换为 Obsidian Markdown，再交给 Obsidian 自带的 MarkdownRenderer 渲染。
+- Registers `.qmd` files as editable Markdown files in Obsidian.
+- Shows a side-pane live preview for the active QMD file.
+- Converts common Quarto syntax for preview: executable code cells, callouts, Pandoc divs, heading attributes, figure captions, image attributes, and cross-reference placeholders.
+- Applies CSS referenced by the current QMD frontmatter or nearby `_metadata.yml` files to the live preview.
+- Includes a built-in image lightbox for preview images.
+- Can run `quarto render` manually and display the generated HTML preview.
+- Keeps live preview safe by not executing document code.
 
-手动点击“Quarto 渲染”时，插件调用本机 `quarto render` 生成 HTML，并在侧边栏展示结果。这个过程可能执行文档中的代码，因此默认需要用户确认。
+## Requirements
 
-## 安装
+- Obsidian desktop.
+- Node.js 20 or later for development or local packaging.
+- Quarto CLI is optional. It is only needed for the manual `Quarto 渲染` preview.
 
-### Agent 安装
+This plugin is desktop-only because Quarto rendering and local file packaging require desktop APIs.
 
-把下面的 Prompt 发给本机 Agent，并替换 `<VAULT_PATH>`。
+## Installation
+
+### Agent-assisted install
+
+Send this prompt to a local coding agent and replace `<VAULT_PATH>` with your Obsidian vault path.
 
 ```text
-将 “QMD 预览” Obsidian 插件安装到这个 Vault：<VAULT_PATH>
+Install the "QMD Preview" Obsidian plugin into this Vault: <VAULT_PATH>
 
-插件信息：
-- 插件 ID：qmd-preview
-- GitHub 仓库：git@github.com:elliotxx/obsidian-qmd-preview.git
-- 目标 Obsidian vault：<VAULT_PATH>
+Plugin information:
+- Plugin ID: qmd-preview
+- GitHub repository: git@github.com:elliotxx/obsidian-qmd-preview.git
+- Target Obsidian vault: <VAULT_PATH>
 
-安装动作：
-- clone 或更新仓库到本机工作区。
-- 优先使用 GitHub Releases 中的最新 zip；如果没有发布包，再执行 npm install && npm run package。
-- 解压 zip，或使用本地生成的 release/qmd-preview-v{version}.zip。
-- 将解压后的 qmd-preview/ 目录复制到 <VAULT_PATH>/.obsidian/plugins/qmd-preview/。
-- 检查插件目录中存在 manifest.json、main.js、styles.css。
-- 确认 manifest.json 中 id 是 qmd-preview，name 是 QMD 预览。
+Install steps:
+- Clone or update the repository in the local workspace.
+- Prefer the latest zip from GitHub Releases. If no release package exists, run npm install && npm run package.
+- Extract the zip, or use the locally generated release/qmd-preview-v{version}.zip.
+- Copy the extracted qmd-preview/ directory to <VAULT_PATH>/.obsidian/plugins/qmd-preview/.
+- Check that manifest.json, main.js, and styles.css exist in the plugin directory.
+- Confirm manifest.json has id qmd-preview and name QMD 预览.
 
-输出：
-- 仓库路径。
-- vault 插件目录。
-- 当前 commit 或本地未提交状态。
-- 安装状态。
-- 需要手动完成的 Obsidian 操作。
+Output:
+- Repository path.
+- Vault plugin directory.
+- Current commit or local dirty state.
+- Install status.
+- Any manual Obsidian steps still needed.
 ```
 
-### 开发安装
+After installation, enable `QMD 预览` in Obsidian's Community plugins settings.
+
+### Manual install
+
+Download `qmd-preview-v{version}.zip` from GitHub Releases, extract it, and copy the `qmd-preview/` folder to:
+
+```text
+<VAULT_PATH>/.obsidian/plugins/qmd-preview/
+```
+
+The plugin directory must contain:
+
+```text
+manifest.json
+main.js
+styles.css
+```
+
+### Development install
 
 ```bash
 npm install
@@ -55,37 +80,91 @@ npm run build
 npm run install-local -- --vault <VAULT_PATH>
 ```
 
-安装后，在 Obsidian 中启用插件 `QMD 预览`。
+## Usage
 
-### 手动安装
+1. Open a `.qmd` file in Obsidian.
+2. Run the command `打开 QMD 预览` or click the ribbon icon.
+3. Edit the QMD file; the side-pane preview updates automatically.
+4. Use `实时预览` for writing feedback.
+5. Use `Quarto 渲染` when you need to check the official Quarto HTML output.
 
-从 GitHub Releases 下载 `qmd-preview-v{version}.zip`，解压后将 `qmd-preview/` 复制到：
+The first manual Quarto render asks for confirmation because Quarto may execute code from the document.
 
-```text
-<VAULT_PATH>/.obsidian/plugins/qmd-preview/
-```
+## How It Works
 
-## 使用
+Live preview does not call Quarto. It reads the active QMD content, strips YAML frontmatter from the rendered body, transforms supported QMD/Pandoc syntax into HTML or Obsidian Markdown, scopes discovered CSS to the preview pane, and renders through Obsidian's `MarkdownRenderer`.
 
-1. 打开一个 `.qmd` 文件。
-2. 执行命令“打开 QMD 预览”。
-3. 在右侧边栏查看实时预览。
-4. 需要确认最终 Quarto 效果时，点击“Quarto 渲染”。
+Manual Quarto render calls the configured Quarto executable, writes HTML to a temporary or configured output directory, inlines reachable stylesheets, and displays the HTML inside the preview pane.
 
-## 边界
+## Limitations
 
-实时预览不执行 Python、R、Julia 或 shell 代码，也不完整支持 bibliography、crossref 自动编号、Quarto filters、extensions 和 `_quarto.yml` 布局配置。最终效果以 Quarto 官方渲染为准。
+The live preview is intentionally partial. It does not execute Python, R, Julia, shell, or other code cells. It does not fully implement bibliography processing, numbered cross references, Quarto filters, Quarto extensions, project-level `_quarto.yml` layout behavior, or every Pandoc attribute edge case.
 
-## 开发
+Treat the live preview as a fast editing view. Treat Quarto render as the final output check.
+
+## Development
 
 ```bash
-make install
-make test
-make package
+npm install
+npm run lint
+npm test
+npm run package
 ```
 
-发布包路径：
+Useful commands:
+
+```bash
+npm run dev
+npm run build
+npm run install-local -- --vault <VAULT_PATH>
+npm run release:validate
+```
+
+Release artifacts are generated under `release/`:
 
 ```text
+release/manifest.json
+release/main.js
+release/styles.css
 release/qmd-preview-v{version}.zip
 ```
+
+## Release
+
+Maintainers can use the project skill at `.agents/skills/release-qmd-preview/SKILL.md`.
+
+The manual release flow is:
+
+```bash
+make version VERSION_TYPE=patch
+npm run release:validate
+npm run lint
+npm test
+npm run package
+git tag {version}
+git push origin {version}
+```
+
+Pushing the tag triggers the GitHub Actions release workflow.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Before opening a pull request, run:
+
+```bash
+npm run lint
+npm test
+npm run package
+```
+
+## Security
+
+See [SECURITY.md](SECURITY.md).
+
+The plugin does not store accounts, passwords, cookies, or tokens. Live preview does not execute QMD code. Manual Quarto render can execute document code and should only be used for documents you trust.
+
+## License
+
+[MIT](LICENSE)

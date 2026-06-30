@@ -9,12 +9,15 @@ const manifest = JSON.parse(await fsp.readFile(path.join(root, "manifest.json"),
 const releaseDir = path.join(root, "release");
 const packageDir = path.join(releaseDir, manifest.id);
 const zipName = `${manifest.id}-v${manifest.version}.zip`;
+const releaseFiles = ["manifest.json", "main.js", "styles.css"];
 
 await fsp.rm(releaseDir, { recursive: true, force: true });
 await fsp.mkdir(packageDir, { recursive: true });
 
-for (const file of ["manifest.json", "main.js", "styles.css"]) {
-  await fsp.copyFile(path.join(root, file), path.join(packageDir, file));
+for (const file of releaseFiles) {
+  const source = path.join(root, file);
+  await fsp.copyFile(source, path.join(releaseDir, file));
+  await fsp.copyFile(source, path.join(packageDir, file));
 }
 
 if (process.platform === "darwin" || process.platform === "linux") {
@@ -27,4 +30,5 @@ if (process.platform === "darwin" || process.platform === "linux") {
   throw new Error("zip command is required to create the release artifact on this platform.");
 }
 
+console.log(`Release assets ready: ${releaseFiles.map((file) => path.join(releaseDir, file)).join(", ")}`);
 console.log(`Release package ready: ${path.join(releaseDir, zipName)}`);
