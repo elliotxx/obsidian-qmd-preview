@@ -68,6 +68,10 @@ const DEFAULT_SETTINGS: QmdPreviewSettings = {
   trustedQuartoRender: false,
 };
 
+interface FileSystemAdapterWithBasePath {
+  basePath?: string;
+}
+
 export default class QmdPreviewPlugin extends Plugin {
   settings: QmdPreviewSettings = { ...DEFAULT_SETTINGS };
   previewViews = new Set<QmdPreviewView>();
@@ -87,16 +91,16 @@ export default class QmdPreviewPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "open-qmd-preview",
-      name: "打开 QMD 预览",
+      id: "open-preview",
+      name: "打开预览",
       callback: () => {
         void this.activatePreviewView();
       },
     });
 
     this.addCommand({
-      id: "refresh-qmd-preview",
-      name: "刷新 QMD 实时预览",
+      id: "refresh-preview",
+      name: "刷新实时预览",
       callback: () => {
         for (const view of this.previewViews) view.scheduleLiveRender({ immediate: true, force: true });
       },
@@ -104,7 +108,7 @@ export default class QmdPreviewPlugin extends Plugin {
 
     this.addCommand({
       id: "render-qmd-with-quarto",
-      name: "使用 Quarto 渲染当前 QMD",
+      name: "使用 Quarto 渲染当前文件",
       callback: () => {
         for (const view of this.previewViews) void view.renderWithQuarto();
       },
@@ -150,9 +154,10 @@ export default class QmdPreviewPlugin extends Plugin {
   }
 
   async loadSettings() {
+    const loaded = await this.loadData() as Partial<QmdPreviewSettings> | null;
     this.settings = {
       ...DEFAULT_SETTINGS,
-      ...(await this.loadData()),
+      ...(loaded ?? {}),
     };
   }
 
@@ -170,7 +175,7 @@ export default class QmdPreviewPlugin extends Plugin {
     }
 
     await leaf.setViewState({ type: VIEW_TYPE_QMD_PREVIEW, active: true });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   rememberActiveQmdContext(): { file: TFile; markdownView: MarkdownView } | null {
@@ -220,7 +225,7 @@ export default class QmdPreviewPlugin extends Plugin {
 
 class QmdPreviewView extends ItemView {
   plugin: QmdPreviewPlugin;
-  timer: ReturnType<typeof setTimeout> | null = null;
+  timer: number | null = null;
   renderToken = 0;
   lastLiveHash = "";
   status: PreviewStatus = "idle";
@@ -263,7 +268,7 @@ class QmdPreviewView extends ItemView {
 
   async onClose() {
     this.plugin.previewViews.delete(this);
-    if (this.timer) clearTimeout(this.timer);
+    if (this.timer) window.clearTimeout(this.timer);
     this.closeLightbox();
     this.revokeHtmlBlobUrl();
   }
@@ -321,9 +326,9 @@ class QmdPreviewView extends ItemView {
   }
 
   scheduleLiveRender(options: { immediate?: boolean; force?: boolean } = {}) {
-    if (this.timer) clearTimeout(this.timer);
+    if (this.timer) window.clearTimeout(this.timer);
     const delay = options.immediate ? 0 : this.plugin.settings.debounceMs;
-    this.timer = setTimeout(() => {
+    this.timer = window.setTimeout(() => {
       void this.renderLive(options.force ?? false);
     }, delay);
   }
@@ -360,6 +365,8 @@ class QmdPreviewView extends ItemView {
     try {
       await MarkdownRenderer.render(this.app, result.markdown, next, active.file.path, this);
       if (liveStyles.css) {
+        // The CSS comes from the active QMD or nearby Quarto metadata and is scoped before injection.
+        // eslint-disable-next-line obsidianmd/no-forbidden-elements
         next.createEl("style", {
           attr: { "data-qmd-preview-live-css": "true" },
           text: liveStyles.css,
@@ -433,7 +440,7 @@ class QmdPreviewView extends ItemView {
       attr: {
         sandbox: "allow-scripts allow-same-origin",
       },
-    }) as HTMLIFrameElement;
+    });
     iframe.setAttr("title", "Quarto HTML 预览");
     iframe.src = this.htmlBlobUrl;
 
@@ -528,7 +535,7 @@ class QmdPreviewView extends ItemView {
     this.lightboxImageEl = panel.createEl("img", {
       cls: "qmd-preview-lightbox-image",
       attr: { alt: "" },
-    }) as HTMLImageElement;
+    });
 
     const nextButton = panel.createEl("button", {
       cls: "qmd-preview-lightbox-nav qmd-preview-lightbox-next",
@@ -588,6 +595,7 @@ class QmdPreviewView extends ItemView {
     const target = event.target;
     if (!(target instanceof Element)) return null;
     const image = target.closest("img");
+    // eslint-disable-next-line obsidianmd/prefer-instanceof
     if (!(image instanceof HTMLImageElement)) return null;
     if (!image.closest(".qmd-preview-render-buffer")) return null;
     if (!image.currentSrc && !image.src) return null;
@@ -599,7 +607,8 @@ class QmdPreviewView extends ItemView {
     const index = images.indexOf(image);
     if (index === -1) return;
     this.lightboxIndex = index;
-    this.lastLightboxFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const activeElement = this.containerEl.win.activeDocument.activeElement;
+    this.lastLightboxFocus = activeElement?.instanceOf(HTMLElement) ? activeElement : null;
     this.renderLightboxImage();
     this.lightboxEl.addClass("is-open");
     this.lightboxEl.setAttr("aria-hidden", "false");
@@ -638,7 +647,7 @@ class QmdPreviewView extends ItemView {
 
   getLightboxImages(): HTMLImageElement[] {
     return Array.from(this.bodyEl.querySelectorAll(".qmd-preview-render-buffer img")).filter(
-      (image): image is HTMLImageElement => image instanceof HTMLImageElement && Boolean(image.currentSrc || image.src),
+      (image): image is HTMLImageElement => image.instanceOf(HTMLImageElement) && Boolean(image.currentSrc || image.src),
     );
   }
 
@@ -721,7 +730,7 @@ async function collectQuartoCssRefs(
       const metadataFile = app.vault.getFileByPath(metadataPath);
       if (!metadataFile) continue;
       try {
-        const config = parseYaml(await app.vault.read(metadataFile));
+        const config: unknown = parseYaml(await app.vault.read(metadataFile));
         for (const ref of extractQuartoCssRefs(config)) {
           refs.push({ path: ref.path, baseDir: dir, source: metadataPath });
         }
@@ -734,7 +743,7 @@ async function collectQuartoCssRefs(
   const frontmatter = extractYamlFrontmatter(source);
   if (frontmatter) {
     try {
-      const config = parseYaml(frontmatter);
+      const config: unknown = parseYaml(frontmatter);
       for (const ref of extractQuartoCssRefs(config)) {
         refs.push({ path: ref.path, baseDir: currentDir, source: file.path });
       }
@@ -793,7 +802,7 @@ class QmdPreviewSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "QMD 预览" });
+    new Setting(containerEl).setName("预览").setHeading();
     const resolvedQuarto = resolveQuartoCommand(this.plugin.settings.quartoPath);
 
     new Setting(containerEl)
@@ -961,7 +970,7 @@ function resolveQuartoCommand(configuredPath: string): string {
 
 function getVaultFileSystemPath(app: App, file: TFile): string {
   const adapter = app.vault.adapter;
-  const basePath = (adapter as any).basePath;
+  const basePath = (adapter as FileSystemAdapterWithBasePath).basePath;
   if (!basePath) {
     throw new Error("当前 vault adapter 不支持本地文件路径。");
   }
@@ -1107,5 +1116,10 @@ function formatBytes(bytes: number): string {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
-  return String(error);
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
 }

@@ -38,6 +38,9 @@ jobs:
       - name: Package
         run: npm run package
 
+      - name: Prepare release notes
+        run: npm run release:notes
+
       - name: Read release version
         id: version
         run: |
@@ -61,4 +64,4 @@ jobs:
             release/styles.css \
             "release/qmd-preview-v${VERSION}.zip" \
             --title "$TAG" \
-            --generate-notes
+            --notes-file release/release-notes.md

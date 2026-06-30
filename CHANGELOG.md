@@ -1,3 +1,11 @@
+## 0.1.1
+
+- 接入 `eslint-plugin-obsidianmd`，补充 Obsidian 插件规范检查。
+- 增加 GitHub Actions CI，在 push 和 PR 中运行版本校验、Release notes 校验、lint、测试和打包。
+- 增加 `AGENTS.md`，记录 Agent 协作、验证和发版规则。
+- GitHub Release notes 改为从 `CHANGELOG.md` 当前版本章节生成。
+- 将最低 Obsidian 版本提升到 `1.7.2`，匹配当前使用的 Obsidian API。
+
 ## 0.1.0
 
 - 初始化 QMD 预览插件。

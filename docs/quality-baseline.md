@@ -6,6 +6,7 @@
 npm run lint
 npm test
 npm run release:validate
+npm run release:notes
 npm run package
 ```
 
@@ -15,6 +16,7 @@ npm run package
 - TypeScript 构建通过。
 - 转换器单元测试通过。
 - `package.json`、`manifest.json`、`versions.json` 版本一致。
+- `CHANGELOG.md` 存在当前版本的 Release notes。
 - 发布资产路径：`release/manifest.json`、`release/main.js`、`release/styles.css`。
 - 发布包路径：`release/qmd-preview-v{version}.zip`。
 
