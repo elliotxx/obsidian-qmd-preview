@@ -1,34 +1,67 @@
-# QMD Preview
+<div align="center">
+  <h1>QMD Preview</h1>
+  <h3>Edit Quarto Markdown in Obsidian with a side-pane live preview.</h3>
 
-English | [简体中文](README.zh-CN.md)
+  <p>
+    <a href="https://github.com/elliotxx/obsidian-qmd-preview/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/elliotxx/obsidian-qmd-preview/release.yml?label=release"></a>
+    <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/elliotxx/obsidian-qmd-preview"></a>
+    <img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.5%2B-7C3AED">
+    <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933">
+  </p>
 
-QMD Preview is an Obsidian desktop plugin for editing `.qmd` files and previewing them in a side pane.
+  <p>
+    <a href="README.zh-CN.md">简体中文</a>
+    ◆ <a href="#why-qmd-preview">Why QMD Preview?</a>
+    ◆ <a href="#quick-start">Quick Start</a>
+    ◆ <a href="#demo">Demo</a>
+    ◆ <a href="#installation">Installation</a>
+    ◆ <a href="#architecture">Architecture</a>
+  </p>
+</div>
 
-The live preview is designed for writing feedback. It converts the parts of QMD that Obsidian does not render directly into Obsidian-compatible Markdown, then lets Obsidian render the result. When you need the final Quarto output, you can run an explicit Quarto render from the preview pane.
+QMD Preview is an Obsidian desktop plugin for editing `.qmd` files and previewing them in a side pane. It is built for people who write Quarto Markdown but want Obsidian's editing workflow, backlinks, vault navigation, and fast local feedback.
 
-## Features
+The live preview does not call Quarto or execute document code. It converts supported QMD and Pandoc syntax into Obsidian-renderable Markdown or HTML, then lets Obsidian render the result. When you need the final output, you can run an explicit `quarto render` from the preview pane.
 
-- Registers `.qmd` files as editable Markdown files in Obsidian.
-- Shows a side-pane live preview for the active QMD file.
-- Converts common Quarto syntax for preview: executable code cells, callouts, Pandoc divs, heading attributes, figure captions, image attributes, and cross-reference placeholders.
-- Applies CSS referenced by the current QMD frontmatter or nearby `_metadata.yml` files to the live preview.
-- Includes a built-in image lightbox for preview images.
-- Can run `quarto render` manually and display the generated HTML preview.
-- Keeps live preview safe by not executing document code.
+## Latest News
 
-## Requirements
+- **[2026/06]** Added GitHub Release packaging with `manifest.json`, `main.js`, `styles.css`, and a zipped plugin bundle.
+- **[2026/06]** Added project-level release skill for repeatable maintainer releases.
+- **[2026/06]** Initial QMD live preview with Quarto render fallback.
 
-- Obsidian desktop.
-- Node.js 20 or later for development or local packaging.
-- Quarto CLI is optional. It is only needed for the manual `Quarto 渲染` preview.
+## Why QMD Preview?
 
-This plugin is desktop-only because Quarto rendering and local file packaging require desktop APIs.
+- **Fast writing feedback**: keep a live preview open while editing `.qmd` files in Obsidian.
+- **Clear safety boundary**: live preview never executes Python, R, Julia, shell, or other document code.
+- **Useful QMD coverage**: preview common Quarto syntax such as code cells, callouts, Pandoc divs, figure captions, image attributes, and cross-reference placeholders.
+- **Style-aware preview**: apply CSS referenced by the current QMD frontmatter or nearby `_metadata.yml` files.
+- **Final output escape hatch**: run Quarto manually when you need to check official HTML output.
 
-## Installation
+## Quick Start
+
+### Install from a release package
+
+```bash
+# 1. Download qmd-preview-v{version}.zip from GitHub Releases.
+# 2. Extract it into your Obsidian vault plugin directory:
+<VAULT_PATH>/.obsidian/plugins/qmd-preview/
+```
+
+The plugin directory should contain:
+
+```text
+manifest.json
+main.js
+styles.css
+```
+
+Then enable `QMD 预览` in Obsidian's Community plugins settings.
+
+> **Prerequisites**: Obsidian desktop. Quarto CLI is optional and only needed for manual `Quarto 渲染`.
 
 ### Agent-assisted install
 
-Send this prompt to a local coding agent and replace `<VAULT_PATH>` with your Obsidian vault path.
+Send this prompt to a local coding agent and replace `<VAULT_PATH>` with your Obsidian vault path:
 
 ```text
 Install the "QMD Preview" Obsidian plugin into this Vault: <VAULT_PATH>
@@ -54,9 +87,44 @@ Output:
 - Any manual Obsidian steps still needed.
 ```
 
-After installation, enable `QMD 预览` in Obsidian's Community plugins settings.
+## Demo
 
-### Manual install
+### Live preview flow
+
+```qmd
+---
+title: Weekly Report
+format:
+  html:
+    css: assets/report.css
+---
+
+# Progress {.weekly-title}
+
+::: {.callout-note}
+This block is shown as an Obsidian callout in live preview.
+:::
+
+![Delivery dashboard](assets/dashboard.png){.evidence-image}
+
+See @fig-dashboard for the full context.
+```
+
+QMD Preview turns the supported parts into an Obsidian-renderable preview:
+
+- YAML frontmatter is not shown as document body.
+- Quarto callouts become Obsidian callouts.
+- Pandoc classes and attributes are preserved as HTML attributes where possible.
+- Standalone images are rendered as figures with captions.
+- Referenced CSS is scoped to the preview pane.
+
+### Manual Quarto render
+
+Use `Quarto 渲染` when the live preview is not enough. The plugin calls `quarto render`, displays the generated HTML, and keeps it separate from the live preview mode. Because Quarto may execute code, the first render asks for confirmation.
+
+## Installation
+
+### Manual installation
 
 Download `qmd-preview-v{version}.zip` from GitHub Releases, extract it, and copy the `qmd-preview/` folder to:
 
@@ -64,20 +132,26 @@ Download `qmd-preview-v{version}.zip` from GitHub Releases, extract it, and copy
 <VAULT_PATH>/.obsidian/plugins/qmd-preview/
 ```
 
-The plugin directory must contain:
-
-```text
-manifest.json
-main.js
-styles.css
-```
-
-### Development install
+### Development installation
 
 ```bash
+git clone git@github.com:elliotxx/obsidian-qmd-preview.git
+cd obsidian-qmd-preview
 npm install
 npm run build
 npm run install-local -- --vault <VAULT_PATH>
+```
+
+### Quarto path
+
+Manual Quarto rendering uses `quarto` by default. If Obsidian cannot find it, set the Quarto executable path in the plugin settings.
+
+Common locations include:
+
+```text
+/usr/local/bin/quarto
+/opt/homebrew/bin/quarto
+/Applications/quarto/bin/quarto
 ```
 
 ## Usage
@@ -86,21 +160,37 @@ npm run install-local -- --vault <VAULT_PATH>
 2. Run the command `打开 QMD 预览` or click the ribbon icon.
 3. Edit the QMD file; the side-pane preview updates automatically.
 4. Use `实时预览` for writing feedback.
-5. Use `Quarto 渲染` when you need to check the official Quarto HTML output.
+5. Use `Quarto 渲染` when you need to check official Quarto HTML output.
 
-The first manual Quarto render asks for confirmation because Quarto may execute code from the document.
+The plugin UI is currently Chinese. This README keeps the real command and button names so users can find them in Obsidian.
 
-## How It Works
+## Architecture
 
-Live preview does not call Quarto. It reads the active QMD content, strips YAML frontmatter from the rendered body, transforms supported QMD/Pandoc syntax into HTML or Obsidian Markdown, scopes discovered CSS to the preview pane, and renders through Obsidian's `MarkdownRenderer`.
+```mermaid
+flowchart LR
+  A["Active .qmd file"] --> B["Obsidian editor listener"]
+  B --> C["QMD transform pipeline"]
+  C --> D["Scoped CSS loader"]
+  D --> E["Obsidian MarkdownRenderer"]
+  E --> F["Side-pane live preview"]
 
-Manual Quarto render calls the configured Quarto executable, writes HTML to a temporary or configured output directory, inlines reachable stylesheets, and displays the HTML inside the preview pane.
+  A --> G["Manual Quarto render"]
+  G --> H["quarto render"]
+  H --> I["Generated HTML preview"]
+```
+
+### Design decisions
+
+- **Two preview modes**: live preview is fast and safe; Quarto render is slower but closer to final output.
+- **No code execution in live preview**: QMD code cells are displayed, not run.
+- **Scoped styles**: CSS from frontmatter and `_metadata.yml` is limited to the preview pane to avoid affecting the rest of Obsidian.
+- **Desktop only**: local files, packaging, and Quarto CLI integration require desktop APIs.
 
 ## Limitations
 
 The live preview is intentionally partial. It does not execute Python, R, Julia, shell, or other code cells. It does not fully implement bibliography processing, numbered cross references, Quarto filters, Quarto extensions, project-level `_quarto.yml` layout behavior, or every Pandoc attribute edge case.
 
-Treat the live preview as a fast editing view. Treat Quarto render as the final output check.
+Treat live preview as a fast editing view. Treat Quarto render as the final output check.
 
 ## Development
 
@@ -133,7 +223,7 @@ release/qmd-preview-v{version}.zip
 
 Maintainers can use the project skill at `.agents/skills/release-qmd-preview/SKILL.md`.
 
-The manual release flow is:
+Manual release flow:
 
 ```bash
 make version VERSION_TYPE=patch
@@ -149,7 +239,15 @@ Pushing the tag triggers the GitHub Actions release workflow.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Good first contribution areas:
+
+- QMD transform coverage.
+- Preview styling compatibility.
+- Accessibility improvements.
+- Documentation and examples.
+- Tests for edge cases in `src/qmd.ts`.
 
 Before opening a pull request, run:
 
@@ -165,6 +263,10 @@ See [SECURITY.md](SECURITY.md).
 
 The plugin does not store accounts, passwords, cookies, or tokens. Live preview does not execute QMD code. Manual Quarto render can execute document code and should only be used for documents you trust.
 
+## Acknowledgments
+
+QMD Preview builds on [Obsidian](https://obsidian.md/) and [Quarto](https://quarto.org/). It aims to keep the writing loop fast while leaving final rendering authority to Quarto.
+
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT License](LICENSE).
