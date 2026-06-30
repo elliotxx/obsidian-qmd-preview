@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should the plugin do?
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: QMD examples
+      description: Include a minimal public example if possible.

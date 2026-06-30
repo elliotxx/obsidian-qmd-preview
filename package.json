@@ -1,0 +1,47 @@
+{
+  "name": "obsidian-qmd-preview",
+  "version": "0.1.0",
+  "description": "Obsidian QMD realtime preview plugin.",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node esbuild.config.mjs --watch",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "lint": "eslint src tests --ext .ts,.mjs",
+    "test": "npm run build && node tests/qmd-transform.test.mjs",
+    "package": "npm run test && node scripts/package-release.mjs",
+    "install-local": "node scripts/install-local.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "quarto",
+    "qmd",
+    "markdown",
+    "preview"
+  ],
+  "author": "elliotxx",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/node": "^24.0.7",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.25.5",
+    "eslint": "^9.30.0",
+    "obsidian": "^1.8.7",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "main.js",
+    "manifest.json",
+    "styles.css",
+    "versions.json"
+  ],
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
+}

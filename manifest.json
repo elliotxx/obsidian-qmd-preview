@@ -1,0 +1,9 @@
+{
+  "id": "qmd-preview",
+  "name": "QMD 预览",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "在 Obsidian 中编辑 QMD 文件，并在侧边栏实时预览。",
+  "author": "elliotxx",
+  "isDesktopOnly": true
+}
