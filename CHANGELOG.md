@@ -1,3 +1,9 @@
+## 0.1.2
+
+- 将 manifest 展示名改为 `QMD Preview`，符合 Obsidian Community 目录命名规则。
+- 修正安装文档中的插件展示名。
+- 修正版本脚本，确保 `versions.json` 始终记录当前发布版本。
+
 ## 0.1.1
 
 - 接入 `eslint-plugin-obsidianmd`，补充 Obsidian 插件规范检查。

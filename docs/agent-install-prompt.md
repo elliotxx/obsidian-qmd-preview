@@ -5,7 +5,7 @@
 - `<VAULT_PATH>`：Obsidian vault 路径。
 
 ```text
-将 “QMD 预览” Obsidian 插件安装到这个 Vault：<VAULT_PATH>
+将 “QMD Preview” Obsidian 插件安装到这个 Vault：<VAULT_PATH>
 
 插件信息：
 - 插件 ID：qmd-preview
@@ -23,7 +23,7 @@
 - 解压 zip。
 - 将解压后的 `qmd-preview/` 目录复制到 `<VAULT_PATH>/.obsidian/plugins/qmd-preview/`。
 - 检查插件目录中存在 `manifest.json`、`main.js`、`styles.css`。
-- 确认 `manifest.json` 中 `id` 是 `qmd-preview`，`name` 是 `QMD 预览`。
+- 确认 `manifest.json` 中 `id` 是 `qmd-preview`，`name` 是 `QMD Preview`。
 
 输出：
 - 仓库路径。

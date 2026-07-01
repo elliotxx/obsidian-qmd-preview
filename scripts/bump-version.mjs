@@ -69,6 +69,7 @@ const latestVersion = Object.keys(compactedVersions).sort(compareVersions).at(-1
 if (!latestVersion || compactedVersions[latestVersion] !== manifest.minAppVersion) {
   compactedVersions[next] = manifest.minAppVersion;
 }
+compactedVersions[next] = manifest.minAppVersion;
 
 if (lock.version) lock.version = next;
 if (lock.packages && lock.packages[""]) {

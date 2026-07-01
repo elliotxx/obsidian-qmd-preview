@@ -55,7 +55,7 @@ main.js
 styles.css
 ```
 
-Then enable `QMD 预览` in Obsidian's Community plugins settings.
+Then enable `QMD Preview` in Obsidian's Community plugins settings.
 
 > **Prerequisites**: Obsidian desktop. Quarto CLI is optional and only needed for manual `Quarto 渲染`.
 
@@ -77,7 +77,7 @@ Install steps:
 - Extract the zip, or use the locally generated release/qmd-preview-v{version}.zip.
 - Copy the extracted qmd-preview/ directory to <VAULT_PATH>/.obsidian/plugins/qmd-preview/.
 - Check that manifest.json, main.js, and styles.css exist in the plugin directory.
-- Confirm manifest.json has id qmd-preview and name QMD 预览.
+- Confirm manifest.json has id qmd-preview and name QMD Preview.
 
 Output:
 - Repository path.
