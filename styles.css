@@ -25,6 +25,21 @@
   font-size: var(--font-ui-small);
 }
 
+.qmd-preview-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.qmd-preview-icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .qmd-preview-open-html-button {
   position: relative;
 }
@@ -34,7 +49,7 @@
   cursor: help;
 }
 
-.qmd-preview-open-html-button.is-disabled::after {
+.qmd-preview-open-html-button::after {
   content: attr(data-tooltip);
   position: absolute;
   top: calc(100% + 8px);
@@ -56,8 +71,8 @@
   pointer-events: none;
 }
 
-.qmd-preview-open-html-button.is-disabled:hover::after,
-.qmd-preview-open-html-button.is-disabled:focus-visible::after {
+.qmd-preview-open-html-button:hover::after,
+.qmd-preview-open-html-button:focus-visible::after {
   display: block;
 }
 

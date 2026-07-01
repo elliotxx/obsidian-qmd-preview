@@ -11,6 +11,7 @@ import {
   TFile,
   WorkspaceLeaf,
   normalizePath,
+  setIcon,
 } from "obsidian";
 import { EditorView, ViewUpdate } from "@codemirror/view";
 import { execFile } from "node:child_process";
@@ -326,13 +327,14 @@ class QmdPreviewView extends ItemView {
     });
 
     this.openHtmlButtonEl = this.toolbarEl.createEl("button", {
-      text: "浏览器打开",
-      cls: "qmd-preview-button qmd-preview-open-html-button",
+      cls: "qmd-preview-button qmd-preview-icon-button qmd-preview-open-html-button",
       attr: {
+        "aria-label": "在浏览器中打开当前 Quarto 预览 HTML",
         "aria-disabled": "true",
         "data-tooltip": "实时预览不会生成浏览器 HTML。请先点击“Quarto 渲染”，生成 Quarto HTML 后再打开。",
       },
     });
+    setIcon(this.openHtmlButtonEl, "external-link");
     this.openHtmlButtonEl.addEventListener("click", () => {
       void this.openQuartoHtmlInBrowser();
     });
@@ -550,6 +552,10 @@ class QmdPreviewView extends ItemView {
     const enabled = Boolean(this.lastPreviewHtml);
     this.openHtmlButtonEl.toggleClass("is-disabled", !enabled);
     this.openHtmlButtonEl.setAttr("aria-disabled", String(!enabled));
+    this.openHtmlButtonEl.setAttr(
+      "aria-label",
+      enabled ? "在浏览器中打开当前 Quarto 预览 HTML" : "浏览器打开不可用，请先点击 Quarto 渲染",
+    );
     this.openHtmlButtonEl.setAttr(
       "data-tooltip",
       enabled
