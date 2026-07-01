@@ -22,6 +22,14 @@
     "markdown",
     "preview"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elliotxx/obsidian-qmd-preview.git"
+  },
+  "bugs": {
+    "url": "https://github.com/elliotxx/obsidian-qmd-preview/issues"
+  },
+  "homepage": "https://github.com/elliotxx/obsidian-qmd-preview#readme",
   "author": "elliotxx",
   "license": "MIT",
   "devDependencies": {

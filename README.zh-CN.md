@@ -5,7 +5,7 @@
   <p>
     <a href="https://github.com/elliotxx/obsidian-qmd-preview/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/elliotxx/obsidian-qmd-preview/release.yml?label=release"></a>
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/elliotxx/obsidian-qmd-preview"></a>
-    <img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.5%2B-7C3AED">
+    <img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.7.2%2B-7C3AED">
     <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933">
   </p>
 
