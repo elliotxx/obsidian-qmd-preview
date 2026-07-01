@@ -25,6 +25,42 @@
   font-size: var(--font-ui-small);
 }
 
+.qmd-preview-open-html-button {
+  position: relative;
+}
+
+.qmd-preview-button.is-disabled {
+  opacity: 0.62;
+  cursor: help;
+}
+
+.qmd-preview-open-html-button.is-disabled::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: none;
+  width: max-content;
+  max-width: min(360px, 56vw);
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.qmd-preview-open-html-button.is-disabled:hover::after,
+.qmd-preview-open-html-button.is-disabled:focus-visible::after {
+  display: block;
+}
+
 .qmd-preview-mode-group {
   display: inline-flex;
   overflow: hidden;
@@ -127,6 +163,13 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
+}
+
+.qmd-preview-body,
+.qmd-preview-render-buffer,
+.qmd-preview-render-buffer :where(p, li, blockquote, table, th, td, h1, h2, h3, h4, h5, h6, span, strong, em, code, pre, figcaption) {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .qmd-preview-empty {

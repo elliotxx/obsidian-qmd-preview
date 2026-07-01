@@ -73,6 +73,10 @@ interface FileSystemAdapterWithBasePath {
   basePath?: string;
 }
 
+interface ElectronShell {
+  openPath(filePath: string): Promise<string>;
+}
+
 export default class QmdPreviewPlugin extends Plugin {
   settings: QmdPreviewSettings = { ...DEFAULT_SETTINGS };
   previewViews = new Set<QmdPreviewView>();
@@ -234,6 +238,7 @@ class QmdPreviewView extends ItemView {
   status: PreviewStatus = "idle";
   mode: "live" | "quarto" = "live";
   lastSuccessfulHtml = "";
+  lastPreviewHtml = "";
   htmlBlobUrl = "";
   lightboxIndex = 0;
   lastLightboxFocus: HTMLElement | null = null;
@@ -241,6 +246,7 @@ class QmdPreviewView extends ItemView {
   toolbarEl: HTMLElement;
   liveButtonEl: HTMLButtonElement;
   quartoButtonEl: HTMLButtonElement;
+  openHtmlButtonEl: HTMLButtonElement;
   statusEl: HTMLElement;
   bodyEl: HTMLElement;
   warningsEl: HTMLElement;
@@ -319,6 +325,18 @@ class QmdPreviewView extends ItemView {
       void this.renderWithQuarto();
     });
 
+    this.openHtmlButtonEl = this.toolbarEl.createEl("button", {
+      text: "浏览器打开",
+      cls: "qmd-preview-button qmd-preview-open-html-button",
+      attr: {
+        "aria-disabled": "true",
+        "data-tooltip": "实时预览不会生成浏览器 HTML。请先点击“Quarto 渲染”，生成 Quarto HTML 后再打开。",
+      },
+    });
+    this.openHtmlButtonEl.addEventListener("click", () => {
+      void this.openQuartoHtmlInBrowser();
+    });
+
     const refreshButton = this.toolbarEl.createEl("button", {
       text: "刷新",
       cls: "qmd-preview-button",
@@ -345,6 +363,9 @@ class QmdPreviewView extends ItemView {
       this.setStatus("idle", "当前没有打开 QMD 文件。");
       this.removeLiveStyleSheet();
       this.revokeHtmlBlobUrl();
+      this.lastSuccessfulHtml = "";
+      this.lastPreviewHtml = "";
+      this.updateOpenHtmlButton();
       this.bodyEl.empty();
       this.bodyEl.createEl("div", {
         cls: "qmd-preview-empty",
@@ -437,13 +458,17 @@ class QmdPreviewView extends ItemView {
     this.lastSuccessfulHtml = htmlPath;
     const rawHtml = await fs.readFile(htmlPath, "utf8");
     const htmlDir = path.dirname(htmlPath);
-    const html = injectBaseHref(injectEmbeddedPreviewStyles(await inlineLocalStylesheets(rawHtml, htmlDir)), htmlDir);
+    const inlinedHtml = await inlineLocalStylesheets(rawHtml, htmlDir);
+    const iframeHtml = injectBaseHref(injectEmbeddedPreviewStyles(inlinedHtml, "iframe"), htmlDir);
+    const browserHtml = injectBaseHref(injectEmbeddedPreviewStyles(inlinedHtml, "browser"), htmlDir);
+    this.lastPreviewHtml = await writePreviewHtml(htmlPath, browserHtml);
     this.warningsEl.empty();
     this.revokeHtmlBlobUrl();
     this.removeLiveStyleSheet();
     this.closeLightbox();
     this.bodyEl.empty();
-    this.htmlBlobUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    this.htmlBlobUrl = URL.createObjectURL(new Blob([iframeHtml], { type: "text/html" }));
+    this.updateOpenHtmlButton();
     const iframe = this.bodyEl.createEl("iframe", {
       cls: "qmd-preview-iframe",
       attr: {
@@ -469,6 +494,20 @@ class QmdPreviewView extends ItemView {
     if (!this.htmlBlobUrl) return;
     URL.revokeObjectURL(this.htmlBlobUrl);
     this.htmlBlobUrl = "";
+  }
+
+  async openQuartoHtmlInBrowser() {
+    if (!this.lastPreviewHtml) {
+      return;
+    }
+    try {
+      const error = await openLocalFile(this.lastPreviewHtml);
+      if (error) {
+        new Notice(`QMD 预览：无法在浏览器中打开 HTML：${error}`);
+      }
+    } catch (error) {
+      new Notice(`QMD 预览：无法在浏览器中打开 HTML：${getErrorMessage(error)}`);
+    }
   }
 
   replaceLiveStyleSheet(css: string) {
@@ -503,6 +542,20 @@ class QmdPreviewView extends ItemView {
     this.quartoButtonEl.toggleClass("is-active", this.mode === "quarto");
     this.liveButtonEl.setAttr("aria-pressed", String(this.mode === "live"));
     this.quartoButtonEl.setAttr("aria-pressed", String(this.mode === "quarto"));
+    this.updateOpenHtmlButton();
+  }
+
+  updateOpenHtmlButton() {
+    if (!this.openHtmlButtonEl) return;
+    const enabled = Boolean(this.lastPreviewHtml);
+    this.openHtmlButtonEl.toggleClass("is-disabled", !enabled);
+    this.openHtmlButtonEl.setAttr("aria-disabled", String(!enabled));
+    this.openHtmlButtonEl.setAttr(
+      "data-tooltip",
+      enabled
+        ? "在浏览器中打开当前 Quarto 预览 HTML。"
+        : "实时预览不会生成浏览器 HTML。请先点击“Quarto 渲染”，生成 Quarto HTML 后再打开。",
+    );
   }
 
   setStatus(status: PreviewStatus, text: string) {
@@ -1069,6 +1122,32 @@ function execFileAsync(command: string, args: string[], cwd: string, timeout = 1
   });
 }
 
+async function writePreviewHtml(sourceHtmlPath: string, html: string): Promise<string> {
+  const extension = path.extname(sourceHtmlPath) || ".html";
+  const basename = path.basename(sourceHtmlPath, extension);
+  const previewPath = path.join(path.dirname(sourceHtmlPath), `${basename}.qmd-preview${extension}`);
+  await fs.writeFile(previewPath, html, "utf8");
+  return previewPath;
+}
+
+async function openLocalFile(filePath: string): Promise<string> {
+  const shell = getElectronShell();
+  if (!shell) {
+    window.open(pathToFileURL(filePath).href);
+    return "";
+  }
+  return shell.openPath(filePath);
+}
+
+function getElectronShell(): ElectronShell | null {
+  try {
+    const electron = require("electron") as { shell?: ElectronShell };
+    return electron.shell ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function injectBaseHref(html: string, baseDir: string): string {
   const baseHref = pathToFileURL(`${baseDir}${path.sep}`).href;
   const baseTag = `<base href="${baseHref}">`;
@@ -1079,7 +1158,56 @@ function injectBaseHref(html: string, baseDir: string): string {
   return `${baseTag}\n${html}`;
 }
 
-function injectEmbeddedPreviewStyles(html: string): string {
+function injectEmbeddedPreviewStyles(html: string, mode: "iframe" | "browser"): string {
+  const layout = mode === "browser" ? `
+#quarto-content {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: min(1040px, calc(100vw - 64px)) !important;
+  max-width: 1040px !important;
+  margin: 0 auto !important;
+  padding: 24px 0 56px !important;
+}
+main.content,
+.weekly-report {
+  grid-column: auto !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1040px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+@media (max-width: 900px) {
+  #quarto-content {
+    width: calc(100vw - 32px) !important;
+    padding: 16px 0 40px !important;
+  }
+}
+` : `
+#quarto-content {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 28px 40px !important;
+}
+main.content,
+.weekly-report {
+  grid-column: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-top: 0 !important;
+}
+@media (max-width: 900px) {
+  #quarto-content {
+    padding: 0 16px 32px !important;
+  }
+}
+`;
+
   const style = `<style data-qmd-preview-embedded-fit>
 html,
 body {
@@ -1090,28 +1218,21 @@ body {
 body {
   overflow-x: hidden !important;
 }
-#quarto-content {
-  display: block !important;
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 24px 28px 40px !important;
-}
-main.content,
-.weekly-report {
-  grid-column: auto !important;
-  width: 100% !important;
-  max-width: none !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-}
-#title-block-header {
+${layout}
+#title-block-header,
+.quarto-title-block {
   display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
-@media (max-width: 900px) {
-  #quarto-content {
-    padding: 18px 16px 32px !important;
-  }
+#quarto-content > :first-child,
+main.content > :first-child,
+main.content > #title-block-header + *,
+#quarto-document-content,
+.weekly-report > :first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
 }
 </style>`;
 
