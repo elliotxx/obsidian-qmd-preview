@@ -40,7 +40,7 @@
   height: 16px;
 }
 
-.qmd-preview-open-html-button {
+.qmd-preview-icon-button[data-tooltip] {
   position: relative;
 }
 
@@ -49,7 +49,7 @@
   cursor: help;
 }
 
-.qmd-preview-open-html-button::after {
+.qmd-preview-icon-button[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
   top: calc(100% + 8px);
@@ -71,8 +71,8 @@
   pointer-events: none;
 }
 
-.qmd-preview-open-html-button:hover::after,
-.qmd-preview-open-html-button:focus-visible::after {
+.qmd-preview-icon-button[data-tooltip]:hover::after,
+.qmd-preview-icon-button[data-tooltip]:focus-visible::after {
   display: block;
 }
 

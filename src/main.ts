@@ -340,9 +340,13 @@ class QmdPreviewView extends ItemView {
     });
 
     const refreshButton = this.toolbarEl.createEl("button", {
-      text: "刷新",
-      cls: "qmd-preview-button",
+      cls: "qmd-preview-button qmd-preview-icon-button qmd-preview-refresh-button",
+      attr: {
+        "aria-label": "刷新实时预览",
+        "data-tooltip": "刷新实时预览",
+      },
     });
+    setIcon(refreshButton, "refresh-cw");
     refreshButton.addEventListener("click", () => {
       this.scheduleLiveRender({ immediate: true, force: true });
     });
