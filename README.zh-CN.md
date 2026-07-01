@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>QMD 预览</h1>
+  <h1>QMD Preview</h1>
   <h3>在 Obsidian 中编辑 Quarto Markdown，并在侧边栏实时预览。</h3>
 
   <p>

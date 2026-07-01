@@ -1,9 +1,10 @@
 import esbuild from "esbuild";
+import { builtinModules } from "node:module";
 import process from "node:process";
-import builtins from "builtin-modules";
 
 const production = process.argv.includes("production");
 const watch = process.argv.includes("--watch");
+const nodeBuiltins = Array.from(new Set(builtinModules.flatMap((moduleName) => [moduleName, `node:${moduleName}`])));
 
 const context = await esbuild.context({
   banner: {
@@ -25,7 +26,7 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins,
+    ...nodeBuiltins,
   ],
   format: "cjs",
   logLevel: "info",

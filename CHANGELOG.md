@@ -1,3 +1,10 @@
+## 0.1.4
+
+- 移除源码中的 eslint disable 指令注释，满足 Obsidian Community 源码审核要求。
+- 将实时预览样式改为 constructable stylesheet，避免动态挂载 `style` 元素。
+- 移除额外的内置模块列表依赖，改用 Node.js 内置 `module.builtinModules`。
+- 将中文 README 标题改为 `QMD Preview`，与 manifest 展示名保持一致。
+
 ## 0.1.3
 
 - 修正 manifest 描述，移除冗余的 `Obsidian` 字样并补充句末标点。

@@ -228,6 +228,8 @@ class QmdPreviewView extends ItemView {
   timer: number | null = null;
   renderToken = 0;
   lastLiveHash = "";
+  liveStyleSheet: CSSStyleSheet | null = null;
+  liveStyleDocument: Document | null = null;
   status: PreviewStatus = "idle";
   mode: "live" | "quarto" = "live";
   lastSuccessfulHtml = "";
@@ -270,6 +272,7 @@ class QmdPreviewView extends ItemView {
     this.plugin.previewViews.delete(this);
     if (this.timer) window.clearTimeout(this.timer);
     this.closeLightbox();
+    this.removeLiveStyleSheet();
     this.revokeHtmlBlobUrl();
   }
 
@@ -339,6 +342,7 @@ class QmdPreviewView extends ItemView {
     if (!active) {
       this.lastLiveHash = "";
       this.setStatus("idle", "当前没有打开 QMD 文件。");
+      this.removeLiveStyleSheet();
       this.revokeHtmlBlobUrl();
       this.bodyEl.empty();
       this.bodyEl.createEl("div", {
@@ -364,15 +368,8 @@ class QmdPreviewView extends ItemView {
 
     try {
       await MarkdownRenderer.render(this.app, result.markdown, next, active.file.path, this);
-      if (liveStyles.css) {
-        // The CSS comes from the active QMD or nearby Quarto metadata and is scoped before injection.
-        // eslint-disable-next-line obsidianmd/no-forbidden-elements
-        next.createEl("style", {
-          attr: { "data-qmd-preview-live-css": "true" },
-          text: liveStyles.css,
-        });
-      }
       if (token !== this.renderToken) return;
+      this.replaceLiveStyleSheet(liveStyles.css);
       this.lastLiveHash = sourceHash;
       this.mode = "live";
       this.updateModeButtons();
@@ -432,6 +429,7 @@ class QmdPreviewView extends ItemView {
     const html = injectBaseHref(injectEmbeddedPreviewStyles(await inlineLocalStylesheets(rawHtml, htmlDir)), htmlDir);
     this.warningsEl.empty();
     this.revokeHtmlBlobUrl();
+    this.removeLiveStyleSheet();
     this.closeLightbox();
     this.bodyEl.empty();
     this.htmlBlobUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
@@ -460,6 +458,26 @@ class QmdPreviewView extends ItemView {
     if (!this.htmlBlobUrl) return;
     URL.revokeObjectURL(this.htmlBlobUrl);
     this.htmlBlobUrl = "";
+  }
+
+  replaceLiveStyleSheet(css: string) {
+    this.removeLiveStyleSheet();
+    if (!css) return;
+    const doc = this.containerEl.win.activeDocument;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+    this.liveStyleDocument = doc;
+    this.liveStyleSheet = sheet;
+  }
+
+  removeLiveStyleSheet() {
+    if (!this.liveStyleDocument || !this.liveStyleSheet) return;
+    this.liveStyleDocument.adoptedStyleSheets = this.liveStyleDocument.adoptedStyleSheets.filter(
+      (sheet) => sheet !== this.liveStyleSheet,
+    );
+    this.liveStyleDocument = null;
+    this.liveStyleSheet = null;
   }
 
   switchToLivePreview() {
@@ -595,8 +613,7 @@ class QmdPreviewView extends ItemView {
     const target = event.target;
     if (!(target instanceof Element)) return null;
     const image = target.closest("img");
-    // eslint-disable-next-line obsidianmd/prefer-instanceof
-    if (!(image instanceof HTMLImageElement)) return null;
+    if (!image?.instanceOf(HTMLImageElement)) return null;
     if (!image.closest(".qmd-preview-render-buffer")) return null;
     if (!image.currentSrc && !image.src) return null;
     return image;
