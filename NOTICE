@@ -1,3 +1,9 @@
-QMD 预览是 Obsidian 桌面插件。
+QMD Preview is an Obsidian desktop plugin.
 
-插件通过本机 Quarto CLI 生成官方 HTML 预览。Quarto 本身不随插件分发。
+The plugin can use the local Quarto CLI to generate official HTML previews. Quarto is not distributed with this plugin.
+
+中文：
+
+QMD Preview 是 Obsidian 桌面插件。
+
+插件可以通过本机 Quarto CLI 生成官方 HTML 预览。Quarto 本身不随插件分发。

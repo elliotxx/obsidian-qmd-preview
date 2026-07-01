@@ -25,7 +25,7 @@ QMD 预览是一个 Obsidian 桌面插件，用于在 Obsidian 中编辑 `.qmd` 
 
 ## 最新进展
 
-- **[2026/06]** 增加 GitHub Release 打包流程，发布 `manifest.json`、`main.js`、`styles.css` 和 zip 插件包。
+- **[2026/06]** 增加 GitHub Release 打包流程，发布 `manifest.json`、`main.js` 和 `styles.css`。
 - **[2026/06]** 增加项目级发版 skill，维护者后续可以按固定流程发版。
 - **[2026/06]** 初始化 QMD 实时预览和 Quarto 渲染兜底能力。
 
@@ -39,12 +39,13 @@ QMD 预览是一个 Obsidian 桌面插件，用于在 Obsidian 中编辑 `.qmd` 
 
 ## 快速开始
 
-### 使用发布包安装
+### 使用 GitHub Release 资产安装
 
 ```bash
-# 1. 从 GitHub Releases 下载 qmd-preview-v{version}.zip。
-# 2. 解压到 Obsidian vault 的插件目录：
+# 1. 创建插件目录：
 <VAULT_PATH>/.obsidian/plugins/qmd-preview/
+# 2. 从同一个 GitHub Release 下载 manifest.json、main.js 和 styles.css。
+# 3. 将这三个文件放入插件目录。
 ```
 
 插件目录中应包含：
@@ -73,9 +74,9 @@ styles.css
 
 安装动作：
 - clone 或更新仓库到本机工作区。
-- 优先使用 GitHub Releases 中的最新 zip；如果没有发布包，再执行 npm install && npm run package。
-- 解压 zip，或使用本地生成的 release/qmd-preview-v{version}.zip。
-- 将解压后的 qmd-preview/ 目录复制到 <VAULT_PATH>/.obsidian/plugins/qmd-preview/。
+- 优先使用 GitHub Releases 中的最新 `manifest.json`、`main.js` 和 `styles.css`。
+- 如果 Release 资产不可用，再执行 npm install && npm run package，使用本地生成的 release 文件。
+- 将 `manifest.json`、`main.js` 和 `styles.css` 复制到 <VAULT_PATH>/.obsidian/plugins/qmd-preview/。
 - 检查插件目录中存在 manifest.json、main.js、styles.css。
 - 确认 manifest.json 中 id 是 qmd-preview，name 是 QMD Preview。
 
@@ -126,7 +127,7 @@ QMD 预览会把支持的部分转换成 Obsidian 可渲染的预览：
 
 ### 手动安装
 
-从 GitHub Releases 下载 `qmd-preview-v{version}.zip`，解压后将 `qmd-preview/` 目录复制到：
+从同一个 GitHub Release 下载 `manifest.json`、`main.js` 和 `styles.css`，并复制到：
 
 ```text
 <VAULT_PATH>/.obsidian/plugins/qmd-preview/
@@ -217,6 +218,8 @@ release/styles.css
 release/qmd-preview-v{version}.zip
 ```
 
+GitHub Release 只发布 Obsidian 会下载的三个文件：`manifest.json`、`main.js` 和 `styles.css`。zip 只作为本地和 CI 便利产物。
+
 ## 发版
 
 维护者可以使用项目级 skill：`.agents/skills/release-qmd-preview/SKILL.md`。
@@ -260,6 +263,8 @@ npm run package
 见 [SECURITY.md](SECURITY.md)。
 
 插件不保存账号、密码、Cookie 或 token。实时预览不执行 QMD 代码。手动 Quarto 渲染可能执行文档代码，只应对可信文档使用。
+
+手动 Quarto 渲染会使用 Node.js 文件系统 API 创建临时渲染输出，并通过 `child_process` 调用本机 `quarto` 可执行文件。这些能力只用于用户显式触发的 Quarto 渲染，不用于实时预览。
 
 ## 致谢
 

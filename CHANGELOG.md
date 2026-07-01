@@ -1,3 +1,10 @@
+## 0.1.3
+
+- 修正 manifest 描述，移除冗余的 `Obsidian` 字样并补充句末标点。
+- GitHub Release 只发布 Obsidian 支持下载的 `manifest.json`、`main.js` 和 `styles.css`。
+- 为 Release 资产增加 GitHub artifact attestations。
+- 补充手动 Quarto 渲染使用文件系统和 `child_process` 的安全披露。
+
 ## 0.1.2
 
 - 将 manifest 展示名改为 `QMD Preview`，符合 Obsidian Community 目录命名规则。

@@ -25,7 +25,7 @@ The live preview does not call Quarto or execute document code. It converts supp
 
 ## Latest News
 
-- **[2026/06]** Added GitHub Release packaging with `manifest.json`, `main.js`, `styles.css`, and a zipped plugin bundle.
+- **[2026/06]** Added GitHub Release packaging with `manifest.json`, `main.js`, and `styles.css`.
 - **[2026/06]** Added project-level release skill for repeatable maintainer releases.
 - **[2026/06]** Initial QMD live preview with Quarto render fallback.
 
@@ -39,12 +39,13 @@ The live preview does not call Quarto or execute document code. It converts supp
 
 ## Quick Start
 
-### Install from a release package
+### Install from GitHub Release assets
 
 ```bash
-# 1. Download qmd-preview-v{version}.zip from GitHub Releases.
-# 2. Extract it into your Obsidian vault plugin directory:
+# 1. Create the plugin directory:
 <VAULT_PATH>/.obsidian/plugins/qmd-preview/
+# 2. Download manifest.json, main.js, and styles.css from the same GitHub Release.
+# 3. Put the three files into the plugin directory.
 ```
 
 The plugin directory should contain:
@@ -73,9 +74,9 @@ Plugin information:
 
 Install steps:
 - Clone or update the repository in the local workspace.
-- Prefer the latest zip from GitHub Releases. If no release package exists, run npm install && npm run package.
-- Extract the zip, or use the locally generated release/qmd-preview-v{version}.zip.
-- Copy the extracted qmd-preview/ directory to <VAULT_PATH>/.obsidian/plugins/qmd-preview/.
+- Prefer the latest GitHub Release assets: manifest.json, main.js, and styles.css.
+- If release assets are unavailable, run npm install && npm run package and use the locally generated release files.
+- Copy manifest.json, main.js, and styles.css to <VAULT_PATH>/.obsidian/plugins/qmd-preview/.
 - Check that manifest.json, main.js, and styles.css exist in the plugin directory.
 - Confirm manifest.json has id qmd-preview and name QMD Preview.
 
@@ -126,7 +127,7 @@ Use `Quarto 渲染` when the live preview is not enough. The plugin calls `quart
 
 ### Manual installation
 
-Download `qmd-preview-v{version}.zip` from GitHub Releases, extract it, and copy the `qmd-preview/` folder to:
+Download `manifest.json`, `main.js`, and `styles.css` from the same GitHub Release and copy them to:
 
 ```text
 <VAULT_PATH>/.obsidian/plugins/qmd-preview/
@@ -219,6 +220,8 @@ release/styles.css
 release/qmd-preview-v{version}.zip
 ```
 
+GitHub Releases publish only the three files used by Obsidian: `manifest.json`, `main.js`, and `styles.css`. The zip is a local and CI convenience artifact.
+
 ## Release
 
 Maintainers can use the project skill at `.agents/skills/release-qmd-preview/SKILL.md`.
@@ -262,6 +265,8 @@ npm run package
 See [SECURITY.md](SECURITY.md).
 
 The plugin does not store accounts, passwords, cookies, or tokens. Live preview does not execute QMD code. Manual Quarto render can execute document code and should only be used for documents you trust.
+
+Manual Quarto render uses Node.js filesystem APIs to create temporary render output and uses `child_process` to run the local `quarto` executable. These capabilities are only used for explicit Quarto rendering, not for live preview.
 
 ## Acknowledgments
 

@@ -48,6 +48,7 @@ Use this skill only in the `obsidian-qmd-preview` repository.
      - `release/styles.css`
      - `release/qmd-preview-v<version>.zip`
    - Inspect the zip with `zipinfo -1 release/qmd-preview-v<version>.zip`; it must contain only `qmd-preview/manifest.json`, `qmd-preview/main.js`, and `qmd-preview/styles.css`.
+   - GitHub Releases publish only `manifest.json`, `main.js`, and `styles.css`. The zip is a local and CI convenience artifact.
 
 4. Commit:
    - Stage only release-relevant files, normally `package.json`, `package-lock.json`, `manifest.json`, `versions.json`, and `CHANGELOG.md`.
@@ -89,5 +90,6 @@ Report in Chinese:
 - tag
 - validation commands run
 - release asset names
+- whether GitHub artifact attestations were generated
 - release notes source
 - GitHub Actions or GitHub Release status

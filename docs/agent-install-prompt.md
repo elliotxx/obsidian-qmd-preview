@@ -19,9 +19,9 @@
 
 安装动作：
 - clone 或更新 `git@github.com:elliotxx/obsidian-qmd-preview.git` 到本机工作区。
-- 优先使用 GitHub Releases 中的最新 zip；如果没有发布包，再执行 `npm install && npm run package`。
-- 解压 zip。
-- 将解压后的 `qmd-preview/` 目录复制到 `<VAULT_PATH>/.obsidian/plugins/qmd-preview/`。
+- 优先使用 GitHub Releases 中的最新 `manifest.json`、`main.js` 和 `styles.css`。
+- 如果 Release 资产不可用，再执行 `npm install && npm run package`，使用本地生成的 release 文件。
+- 将 `manifest.json`、`main.js` 和 `styles.css` 复制到 `<VAULT_PATH>/.obsidian/plugins/qmd-preview/`。
 - 检查插件目录中存在 `manifest.json`、`main.js`、`styles.css`。
 - 确认 `manifest.json` 中 `id` 是 `qmd-preview`，`name` 是 `QMD Preview`。
 
