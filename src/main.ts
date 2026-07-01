@@ -34,6 +34,7 @@ const DEFAULT_DEBOUNCE_MS = 200;
 const DEFAULT_LARGE_FILE_THRESHOLD_BYTES = 200 * 1024;
 const DEFAULT_QUARTO_PATH = "quarto";
 const LIVE_PREVIEW_CSS_SCOPE = ".qmd-preview-render-buffer";
+const QUARTO_INSTALL_URL = "https://quarto.org/docs/get-started/";
 const QUARTO_CANDIDATE_PATHS = [
   "/usr/local/bin/quarto",
   "/opt/homebrew/bin/quarto",
@@ -394,6 +395,17 @@ class QmdPreviewView extends ItemView {
       return;
     }
 
+    const token = ++this.renderToken;
+    const quartoCommand = resolveQuartoCommand(this.plugin.settings.quartoPath);
+    this.setStatus("quarto-rendering", "正在检查 Quarto CLI。");
+    const quartoCheck = await checkQuartoCommand(quartoCommand);
+    if (!quartoCheck.available) {
+      if (token !== this.renderToken) return;
+      this.setStatus("error", "未找到 Quarto CLI。实时预览仍可使用；如需官方 HTML 输出，请安装 Quarto 或在设置中填写 Quarto CLI 路径。");
+      new QuartoMissingModal(this.app, quartoCommand, quartoCheck.message).open();
+      return;
+    }
+
     if (!this.plugin.settings.trustedQuartoRender) {
       const confirmed = await new Promise<boolean>((resolve) => {
         new QuartoTrustModal(this.app, async () => {
@@ -405,7 +417,6 @@ class QmdPreviewView extends ItemView {
       if (!confirmed) return;
     }
 
-    const token = ++this.renderToken;
     this.setStatus("quarto-rendering", `正在使用 Quarto 渲染：${active.file.path}`);
 
     try {
@@ -952,6 +963,48 @@ class QuartoTrustModal extends Modal {
   }
 }
 
+class QuartoMissingModal extends Modal {
+  command: string;
+  detail: string;
+
+  constructor(app: App, command: string, detail: string) {
+    super(app);
+    this.command = command;
+    this.detail = detail;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "未找到 Quarto CLI" });
+    contentEl.createEl("p", {
+      text: "实时预览仍可使用。只有需要 Quarto 官方 HTML 输出时，才需要安装 Quarto CLI。",
+    });
+    contentEl.createEl("p", {
+      text: `当前尝试执行：${this.command}`,
+    });
+    contentEl.createEl("p", {
+      text: "安装完成后，如果 Obsidian 仍然找不到 Quarto，请在插件设置中填写 Quarto CLI 路径。",
+    });
+    contentEl.createEl("p", {
+      text: `错误信息：${this.detail}`,
+    });
+
+    const actions = contentEl.createDiv("qmd-preview-modal-actions");
+    actions.createEl("button", { text: "关闭" }).addEventListener("click", () => {
+      this.close();
+    });
+    actions.createEl("button", { text: "打开安装页面", cls: "mod-cta" }).addEventListener("click", () => {
+      window.open(QUARTO_INSTALL_URL);
+      this.close();
+    });
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 async function renderQuartoHtml(app: App, settings: QmdPreviewSettings, file: TFile): Promise<string> {
   const inputPath = getVaultFileSystemPath(app, file);
   const quartoCommand = resolveQuartoCommand(settings.quartoPath);
@@ -985,6 +1038,15 @@ function resolveQuartoCommand(configuredPath: string): string {
   return DEFAULT_QUARTO_PATH;
 }
 
+async function checkQuartoCommand(command: string): Promise<{ available: boolean; message: string }> {
+  try {
+    await execFileAsync(command, ["--version"], process.cwd(), 10000);
+    return { available: true, message: "" };
+  } catch (error) {
+    return { available: false, message: getErrorMessage(error) };
+  }
+}
+
 function getVaultFileSystemPath(app: App, file: TFile): string {
   const adapter = app.vault.adapter;
   const basePath = (adapter as FileSystemAdapterWithBasePath).basePath;
@@ -994,9 +1056,9 @@ function getVaultFileSystemPath(app: App, file: TFile): string {
   return path.join(basePath, file.path);
 }
 
-function execFileAsync(command: string, args: string[], cwd: string): Promise<void> {
+function execFileAsync(command: string, args: string[], cwd: string, timeout = 120000): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(command, args, { cwd, timeout: 120000 }, (error, stdout, stderr) => {
+    execFile(command, args, { cwd, timeout }, (error, stdout, stderr) => {
       if (error) {
         const message = [error.message, stdout, stderr].filter(Boolean).join("\n");
         reject(new Error(message));

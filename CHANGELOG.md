@@ -1,3 +1,9 @@
+## 0.1.5
+
+- 点击 `Quarto 渲染` 时先检测 Quarto CLI 是否可用。
+- 未找到 Quarto CLI 时显示安装引导，而不是展示底层 `spawn quarto ENOENT` 错误。
+- 补充文档说明：插件不会自动下载或安装 Quarto，实时预览不依赖 Quarto。
+
 ## 0.1.4
 
 - 移除源码中的 eslint disable 指令注释，满足 Obsidian Community 源码审核要求。

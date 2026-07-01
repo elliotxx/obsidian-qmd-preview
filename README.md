@@ -155,6 +155,8 @@ Common locations include:
 /Applications/quarto/bin/quarto
 ```
 
+If Quarto CLI is not installed, `Quarto 渲染` shows an install guide instead of a raw `spawn quarto ENOENT` error. Live preview still works without Quarto.
+
 ## Usage
 
 1. Open a `.qmd` file in Obsidian.

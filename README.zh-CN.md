@@ -155,6 +155,8 @@ npm run install-local -- --vault <VAULT_PATH>
 /Applications/quarto/bin/quarto
 ```
 
+如果本机没有安装 Quarto CLI，点击“Quarto 渲染”时会显示安装引导，不会直接显示底层 `spawn quarto ENOENT` 错误。实时预览不依赖 Quarto，仍可继续使用。
+
 ## 使用
 
 1. 在 Obsidian 中打开 `.qmd` 文件。
