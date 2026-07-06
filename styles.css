@@ -3,8 +3,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 8px;
-  padding: 12px;
+  gap: 0;
+  padding: 0;
 }
 
 .qmd-preview-toolbar {
@@ -13,7 +13,7 @@
   gap: 8px;
   flex-wrap: nowrap;
   border-bottom: 1px solid var(--background-modifier-border);
-  padding-bottom: 8px;
+  padding: 12px 12px 8px;
 }
 
 .qmd-preview-title {
@@ -172,12 +172,14 @@
 .qmd-preview-warnings {
   color: var(--text-warning);
   font-size: var(--font-ui-small);
+  padding: 8px 12px 0;
 }
 
 .qmd-preview-body {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  background: var(--background-primary);
 }
 
 .qmd-preview-body,
@@ -185,6 +187,26 @@
 .qmd-preview-render-buffer :where(p, li, blockquote, table, th, td, h1, h2, h3, h4, h5, h6, span, strong, em, code, pre, figcaption) {
   user-select: text;
   -webkit-user-select: text;
+}
+
+.qmd-preview-render-buffer {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.qmd-preview-render-buffer > :first-child,
+.qmd-preview-render-buffer > :first-child > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.qmd-preview-render-buffer > :first-child:is(div, section, article, main) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
 }
 
 .qmd-preview-empty {
