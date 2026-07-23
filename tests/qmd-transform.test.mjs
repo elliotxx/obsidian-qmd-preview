@@ -130,6 +130,32 @@ const {
 }
 
 {
+  const input = [
+    "::: {.progress-item}",
+    "",
+    "**核心观点**：",
+    "- Agent 应该参与到团队协作界面中",
+    "- issue/task 应该在聊天中自然产生",
+    "",
+    ":::",
+  ].join("\n");
+  const result = transformQmdToObsidianMarkdown(input);
+  assert.equal(
+    result.markdown,
+    [
+      '<div class="progress-item">',
+      "",
+      "<strong>核心观点</strong>：",
+      "",
+      "- Agent 应该参与到团队协作界面中",
+      "- issue/task 应该在聊天中自然产生",
+      "",
+      "</div>",
+    ].join("\n"),
+  );
+}
+
+{
   const input = "普通图片：![截图](https://example.com/plain.png)";
   const result = transformQmdToObsidianMarkdown(input);
   assert.equal(result.markdown, '普通图片：<img src="https://example.com/plain.png" alt="截图">');

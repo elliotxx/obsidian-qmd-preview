@@ -94,7 +94,11 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
       continue;
     }
 
-    out.push(transformPandocInlineSyntax(line));
+    const transformedLine = transformPandocInlineSyntax(line);
+    if (startsUnorderedList(transformedLine) && needsBlockBoundary(out)) {
+      out.push("");
+    }
+    out.push(transformedLine);
   }
 
   while (divStack.length > 0) {
@@ -107,6 +111,15 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
     markdown: out.join("\n"),
     warnings,
   };
+}
+
+function startsUnorderedList(line: string): boolean {
+  return /^\s{0,3}[-+*](?:[ \t]+|$)/.test(line) && !/^\s{0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(line);
+}
+
+function needsBlockBoundary(lines: string[]): boolean {
+  const previousLine = lines.at(-1);
+  return previousLine !== undefined && previousLine.trim().length > 0 && !startsUnorderedList(previousLine);
 }
 
 export function stableHash(value: string): string {
