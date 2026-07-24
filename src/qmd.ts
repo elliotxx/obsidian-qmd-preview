@@ -1,6 +1,14 @@
 export interface TransformResult {
   markdown: string;
   warnings: string[];
+  outputLineMap: SourceLineRange[];
+  sourceLineCount: number;
+}
+
+export interface SourceLineRange {
+  sourceStart: number;
+  sourceEnd: number;
+  synthetic: boolean;
 }
 
 export interface QuartoCssRef {
@@ -18,16 +26,28 @@ const CALLOUT_TYPES: Record<string, string> = {
 export function transformQmdToObsidianMarkdown(source: string): TransformResult {
   const warnings: string[] = [];
   const lines = stripYamlFrontmatter(source).split(/\r?\n/);
+  const sourceLineOffset = countStrippedFrontmatterLines(source);
   const out: string[] = [];
+  const outputLineMap: SourceLineRange[] = [];
   let inCodeFence = false;
   const divStack: string[] = [];
+  const emit = (text: string, sourceStart: number, sourceEnd = sourceStart, synthetic = false) => {
+    const generatedLines = text.split("\n");
+    for (const generatedLine of generatedLines) {
+      out.push(generatedLine);
+      outputLineMap.push({ sourceStart, sourceEnd, synthetic });
+    }
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const sourceLine = sourceLineOffset + i;
 
     if (inCodeFence) {
-      out.push(line);
-      if (/^\s*```\s*$/.test(line)) inCodeFence = false;
+      emit(line, sourceLine);
+      if (/^\s*```\s*$/.test(line)) {
+        inCodeFence = false;
+      }
       continue;
     }
 
@@ -36,13 +56,13 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
       const indent = codeFence[1] ?? "";
       const rawLanguage = codeFence[2] ?? "";
       const language = normalizeCodeLanguage(rawLanguage);
-      out.push(`${indent}\`\`\`${language}`);
+      emit(`${indent}\`\`\`${language}`, sourceLine);
       inCodeFence = true;
       continue;
     }
 
     if (/^\s*```/.test(line)) {
-      out.push(line);
+      emit(line, sourceLine);
       inCodeFence = true;
       continue;
     }
@@ -50,7 +70,7 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
     const callout = line.match(/^:::\s*\{\.callout-([a-zA-Z0-9_-]+)[^}]*\}\s*$/);
     if (callout) {
       const type = normalizeCalloutType(callout[1] ?? "note");
-      out.push(`> [!${type}]`);
+      emit(`> [!${type}]`, sourceLine);
 
       let closed = false;
       while (i + 1 < lines.length) {
@@ -60,8 +80,9 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
           closed = true;
           break;
         }
+        const bodySourceLine = sourceLineOffset + i;
         const transformedBodyLine = transformPandocInlineSyntax(bodyLine);
-        out.push(transformedBodyLine.length > 0 ? `> ${transformedBodyLine}` : ">");
+        emit(transformedBodyLine.length > 0 ? `> ${transformedBodyLine}` : ">", bodySourceLine);
       }
 
       if (!closed) {
@@ -74,14 +95,14 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
     if (divStart) {
       const indent = divStart[1] ?? "";
       const htmlAttributes = pandocAttributesToHtml(divStart[2] ?? "");
-      out.push(`${indent}<div${htmlAttributes}>`);
+      emit(`${indent}<div${htmlAttributes}>`, sourceLine);
       divStack.push(indent);
       continue;
     }
 
     if (/^\s*:::\s*$/.test(line)) {
       const indent = divStack.pop() ?? "";
-      out.push(`${indent}</div>`);
+      emit(`${indent}</div>`, sourceLine);
       continue;
     }
 
@@ -90,27 +111,36 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
       const level = heading[1]?.length ?? 1;
       const text = transformPandocInlineSyntax(heading[2] ?? "");
       const htmlAttributes = pandocAttributesToHtml(heading[3] ?? "");
-      out.push(`<h${level}${htmlAttributes}>${text}</h${level}>`);
+      emit(`<h${level}${htmlAttributes}>${text}</h${level}>`, sourceLine);
       continue;
     }
 
     const transformedLine = transformPandocInlineSyntax(line);
     if (startsUnorderedList(transformedLine) && needsBlockBoundary(out)) {
-      out.push("");
+      emit("", sourceLine, sourceLine, true);
     }
-    out.push(transformedLine);
+    emit(transformedLine, sourceLine);
   }
 
   while (divStack.length > 0) {
     const indent = divStack.pop() ?? "";
-    out.push(`${indent}</div>`);
+    const sourceLine = Math.max(0, sourceLineOffset + lines.length - 1);
+    emit(`${indent}</div>`, sourceLine, sourceLine, true);
     warnings.push("有未闭合的 Pandoc div，已在预览中自动补齐结束标签。");
   }
 
   return {
     markdown: out.join("\n"),
     warnings,
+    outputLineMap,
+    sourceLineCount: source.split(/\r?\n/).length,
   };
+}
+
+function countStrippedFrontmatterLines(source: string): number {
+  const match = source.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+  if (!match) return 0;
+  return (match[0].match(/\n/g) ?? []).length;
 }
 
 function startsUnorderedList(line: string): boolean {

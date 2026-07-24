@@ -6,11 +6,15 @@ import { pathToFileURL } from "node:url";
 import esbuild from "esbuild";
 
 const root = path.dirname(path.dirname(new URL(import.meta.url).pathname));
-const outfile = path.join(os.tmpdir(), `qmd-transform-${Date.now()}.mjs`);
+const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "qmd-preview-tests-"));
 
 await esbuild.build({
-  entryPoints: [path.join(root, "src/qmd.ts")],
-  outfile,
+  entryPoints: {
+    qmd: path.join(root, "src/qmd.ts"),
+    "scroll-sync": path.join(root, "src/scroll-sync.ts"),
+  },
+  outdir: tempDir,
+  outExtension: { ".js": ".mjs" },
   bundle: true,
   platform: "node",
   format: "esm",
@@ -25,13 +29,30 @@ const {
   stableHash,
   stripYamlFrontmatter,
   transformQmdToObsidianMarkdown,
-} = await import(pathToFileURL(outfile).href);
+} = await import(pathToFileURL(path.join(tempDir, "qmd.mjs")).href);
+
+const {
+  dedupeVisualSourceAnchors,
+  findListItemOutputLines,
+  mapOutputLineRange,
+  previewOffsetAtSourceLine,
+  scanMarkdownBlockRanges,
+  sourceLineAtPreviewOffset,
+} = await import(pathToFileURL(path.join(tempDir, "scroll-sync.mjs")).href);
 
 {
   const input = "```{python}\nprint('hello')\n```";
   const result = transformQmdToObsidianMarkdown(input);
   assert.equal(result.markdown, "```python\nprint('hello')\n```");
   assert.deepEqual(result.warnings, []);
+  assert.deepEqual(
+    result.outputLineMap,
+    [
+      { sourceStart: 0, sourceEnd: 0, synthetic: false },
+      { sourceStart: 1, sourceEnd: 1, synthetic: false },
+      { sourceStart: 2, sourceEnd: 2, synthetic: false },
+    ],
+  );
 }
 
 {
@@ -118,6 +139,8 @@ const {
       "</div>",
     ].join("\n"),
   );
+  assert.equal(result.outputLineMap.length, result.markdown.split("\n").length);
+  assert.equal(result.outputLineMap.every((range) => range.sourceStart === 0), true);
 }
 
 {
@@ -152,6 +175,19 @@ const {
       "",
       "</div>",
     ].join("\n"),
+  );
+  assert.deepEqual(
+    result.outputLineMap,
+    [
+      { sourceStart: 0, sourceEnd: 0, synthetic: false },
+      { sourceStart: 1, sourceEnd: 1, synthetic: false },
+      { sourceStart: 2, sourceEnd: 2, synthetic: false },
+      { sourceStart: 3, sourceEnd: 3, synthetic: true },
+      { sourceStart: 3, sourceEnd: 3, synthetic: false },
+      { sourceStart: 4, sourceEnd: 4, synthetic: false },
+      { sourceStart: 5, sourceEnd: 5, synthetic: false },
+      { sourceStart: 6, sourceEnd: 6, synthetic: false },
+    ],
   );
 }
 
@@ -201,6 +237,11 @@ const {
   const result = transformQmdToObsidianMarkdown(input);
   assert.equal(result.markdown, '<div class="broken">\n内容\n</div>');
   assert.equal(result.warnings.length, 1);
+  assert.deepEqual(result.outputLineMap.at(-1), {
+    sourceStart: 1,
+    sourceEnd: 1,
+    synthetic: true,
+  });
 }
 
 {
@@ -227,6 +268,110 @@ const {
   const input = "---\ntitle: Demo\n---\n# 正文标题 {.main-title}\n正文";
   const result = transformQmdToObsidianMarkdown(input);
   assert.equal(result.markdown, '<h1 class="main-title">正文标题</h1>\n正文');
+  assert.deepEqual(
+    result.outputLineMap,
+    [
+      { sourceStart: 3, sourceEnd: 3, synthetic: false },
+      { sourceStart: 4, sourceEnd: 4, synthetic: false },
+    ],
+  );
+  assert.equal(result.sourceLineCount, 5);
+}
+
+{
+  const result = transformQmdToObsidianMarkdown("---\r\ntitle: Demo\r\n---\r\n正文");
+  assert.equal(result.markdown, "正文");
+  assert.deepEqual(result.outputLineMap, [
+    { sourceStart: 3, sourceEnd: 3, synthetic: false },
+  ]);
+}
+
+{
+  const input = "::: {.callout-note}\n说明\n:::\n结尾";
+  const result = transformQmdToObsidianMarkdown(input);
+  assert.equal(result.markdown, "> [!note]\n> 说明\n结尾");
+  assert.deepEqual(
+    result.outputLineMap,
+    [
+      { sourceStart: 0, sourceEnd: 0, synthetic: false },
+      { sourceStart: 1, sourceEnd: 1, synthetic: false },
+      { sourceStart: 3, sourceEnd: 3, synthetic: false },
+    ],
+  );
+}
+
+{
+  const lineMap = [
+    { sourceStart: 10, sourceEnd: 10, synthetic: false },
+    { sourceStart: 11, sourceEnd: 11, synthetic: true },
+    { sourceStart: 12, sourceEnd: 14, synthetic: false },
+  ];
+  assert.deepEqual(mapOutputLineRange(lineMap, 0, 2), { startLine: 10, endLine: 14 });
+  assert.deepEqual(mapOutputLineRange(lineMap, 1, 1), { startLine: 11, endLine: 11 });
+  assert.deepEqual(
+    findListItemOutputLines(["段落", "- 第一项", "    1. 子项", "> - 引用项"], 0, 3),
+    [1, 2, 3],
+  );
+  assert.deepEqual(
+    findListItemOutputLines(["- 第一项", "```text", "- 不是列表", "```", "- 第二项"], 0, 4),
+    [0, 4],
+  );
+  assert.deepEqual(
+    scanMarkdownBlockRanges([
+      "<div>",
+      "<h1>标题</h1>",
+      "",
+      "第一段",
+      "续行",
+      "",
+      "- 列表一",
+      "- 列表二",
+      "",
+      "> [!note]",
+      "> 引用",
+      "",
+      "```ts",
+      "const value = 1;",
+      "```",
+      "",
+      "| A | B |",
+      "| --- | --- |",
+      "| 1 | 2 |",
+      "",
+      "<figure>",
+      "<p><img src=\"demo.png\"></p>",
+      "</figure>",
+      "</div>",
+    ]),
+    [
+      { kind: "heading", lineStart: 1, lineEnd: 1 },
+      { kind: "paragraph", lineStart: 3, lineEnd: 4 },
+      { kind: "list-item", lineStart: 6, lineEnd: 6 },
+      { kind: "list-item", lineStart: 7, lineEnd: 7 },
+      { kind: "blockquote", lineStart: 9, lineEnd: 10 },
+      { kind: "code", lineStart: 12, lineEnd: 14 },
+      { kind: "table", lineStart: 16, lineEnd: 18 },
+      { kind: "figure", lineStart: 20, lineEnd: 22 },
+    ],
+  );
+}
+
+{
+  const anchors = [
+    { top: 0, bottom: 100, startLine: 3, endLine: 7 },
+    { top: 200, bottom: 240, startLine: 12, endLine: 12 },
+  ];
+  assert.equal(sourceLineAtPreviewOffset(anchors, 50), 5);
+  assert.equal(sourceLineAtPreviewOffset(anchors, 150), 10);
+  assert.equal(previewOffsetAtSourceLine(anchors, 5), 50);
+  assert.equal(previewOffsetAtSourceLine(anchors, 10), 160);
+  assert.deepEqual(
+    dedupeVisualSourceAnchors([
+      { top: 0, bottom: 20, startLine: 3, endLine: 7 },
+      { top: 0, bottom: 100, startLine: 3, endLine: 7 },
+    ]),
+    [{ top: 0, bottom: 100, startLine: 3, endLine: 7 }],
+  );
 }
 
 {
@@ -255,5 +400,5 @@ const {
   assert.match(scoped, /@media \(max-width: 900px\) \{\n\.qmd-preview-render-buffer \.grid/);
 }
 
-await fs.rm(outfile, { force: true });
+await fs.rm(tempDir, { recursive: true, force: true });
 console.log("qmd-transform tests passed");

@@ -40,6 +40,11 @@
   height: 16px;
 }
 
+.qmd-preview-scroll-sync-button.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
 .qmd-preview-icon-button[data-tooltip] {
   position: relative;
 }

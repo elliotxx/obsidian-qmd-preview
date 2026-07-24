@@ -1,6 +1,7 @@
 import {
   App,
   ItemView,
+  MarkdownPostProcessorContext,
   MarkdownRenderer,
   MarkdownView,
   Modal,
@@ -26,9 +27,19 @@ import {
   extractYamlFrontmatter,
   isLikelyQmdPath,
   scopeCssToSelector,
+  SourceLineRange,
   stableHash,
   transformQmdToObsidianMarkdown,
 } from "./qmd";
+import {
+  dedupeVisualSourceAnchors,
+  findListItemOutputLines,
+  mapOutputLineRange,
+  previewOffsetAtSourceLine,
+  scanMarkdownBlockRanges,
+  sourceLineAtPreviewOffset,
+  VisualSourceAnchor,
+} from "./scroll-sync";
 
 const VIEW_TYPE_QMD_PREVIEW = "qmd-preview-view";
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -58,6 +69,7 @@ interface QmdPreviewSettings {
   quartoOutputDir: string;
   autoRenderQuartoOnSave: boolean;
   trustedQuartoRender: boolean;
+  scrollSyncEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: QmdPreviewSettings = {
@@ -68,7 +80,14 @@ const DEFAULT_SETTINGS: QmdPreviewSettings = {
   quartoOutputDir: "",
   autoRenderQuartoOnSave: false,
   trustedQuartoRender: false,
+  scrollSyncEnabled: true,
 };
+
+interface PreviewRenderContext {
+  filePath: string;
+  markdownLines: readonly string[];
+  outputLineMap: readonly SourceLineRange[];
+}
 
 interface FileSystemAdapterWithBasePath {
   basePath?: string;
@@ -81,7 +100,10 @@ interface ElectronShell {
 export default class QmdPreviewPlugin extends Plugin {
   settings: QmdPreviewSettings = { ...DEFAULT_SETTINGS };
   previewViews = new Set<QmdPreviewView>();
+  previewRenderContexts = new WeakMap<HTMLElement, PreviewRenderContext>();
+  activePreviewRenderContexts = new Map<string, PreviewRenderContext[]>();
   lastQmdFilePath: string | null = null;
+  lastQmdMarkdownView: MarkdownView | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -129,6 +151,10 @@ export default class QmdPreviewPlugin extends Plugin {
       }),
     );
 
+    this.registerMarkdownPostProcessor((element, context) => {
+      this.annotatePreviewSourceRanges(element, context);
+    });
+
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
         for (const view of this.previewViews) view.scheduleLiveRender({ immediate: true });
@@ -171,6 +197,164 @@ export default class QmdPreviewPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  async setScrollSyncEnabled(enabled: boolean) {
+    this.settings.scrollSyncEnabled = enabled;
+    await this.saveSettings();
+    for (const view of this.previewViews) view.updateScrollSyncButton();
+  }
+
+  annotatePreviewSourceRanges(element: HTMLElement, context: MarkdownPostProcessorContext) {
+    const root = element.matches(LIVE_PREVIEW_CSS_SCOPE)
+      ? element
+      : element.closest<HTMLElement>(LIVE_PREVIEW_CSS_SCOPE);
+    const renderContext = (root ? this.previewRenderContexts.get(root) : undefined)
+      ?? this.getActivePreviewRenderContext(context.sourcePath);
+    if (!renderContext || renderContext.filePath !== context.sourcePath) return;
+
+    const candidates = new Set<HTMLElement>([
+      element,
+      ...Array.from(
+        element.querySelectorAll<HTMLElement>(
+          "h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, table, figure",
+        ),
+      ),
+    ]);
+    const elementSection = context.getSectionInfo(element);
+    for (const candidate of candidates) {
+      const section = candidate === element ? elementSection : context.getSectionInfo(candidate);
+      if (!section) continue;
+      if (
+        candidate !== element
+        && elementSection
+        && section.lineStart === elementSection.lineStart
+        && section.lineEnd === elementSection.lineEnd
+      ) {
+        continue;
+      }
+      const sourceRange = mapOutputLineRange(
+        renderContext.outputLineMap,
+        section.lineStart,
+        section.lineEnd,
+      );
+      if (!sourceRange) continue;
+      this.setPreviewSourceRange(candidate, sourceRange.startLine, sourceRange.endLine);
+    }
+    this.annotatePreviewListItems(element, context, renderContext);
+  }
+
+  beginPreviewRender(renderContext: PreviewRenderContext) {
+    const contexts = this.activePreviewRenderContexts.get(renderContext.filePath) ?? [];
+    contexts.push(renderContext);
+    this.activePreviewRenderContexts.set(renderContext.filePath, contexts);
+  }
+
+  endPreviewRender(renderContext: PreviewRenderContext) {
+    const contexts = this.activePreviewRenderContexts.get(renderContext.filePath);
+    if (!contexts) return;
+    const index = contexts.lastIndexOf(renderContext);
+    if (index >= 0) contexts.splice(index, 1);
+    if (contexts.length === 0) {
+      this.activePreviewRenderContexts.delete(renderContext.filePath);
+    }
+  }
+
+  getActivePreviewRenderContext(filePath: string): PreviewRenderContext | undefined {
+    const contexts = this.activePreviewRenderContexts.get(filePath);
+    return contexts?.[contexts.length - 1];
+  }
+
+  annotatePreviewListItems(
+    element: HTMLElement,
+    context: MarkdownPostProcessorContext,
+    renderContext: PreviewRenderContext,
+  ) {
+    const listRoots = Array.from(
+      element.querySelectorAll<HTMLElement>("ul, ol"),
+    ).filter((list) => !list.parentElement?.closest("ul, ol"));
+    if (element.matches("ul, ol")) listRoots.unshift(element);
+
+    for (const list of new Set(listRoots)) {
+      const items = Array.from(list.querySelectorAll<HTMLElement>("li"));
+      if (items.length === 0) continue;
+      const section = context.getSectionInfo(list) ?? context.getSectionInfo(element);
+      if (!section) continue;
+      const outputLines = findListItemOutputLines(
+        renderContext.markdownLines,
+        section.lineStart,
+        section.lineEnd,
+      );
+      if (outputLines.length !== items.length) continue;
+
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        const outputLine = outputLines[index];
+        if (!item || outputLine === undefined) continue;
+        const sourceRange = mapOutputLineRange(
+          renderContext.outputLineMap,
+          outputLine,
+          outputLine,
+        );
+        if (!sourceRange) continue;
+        this.setPreviewSourceRange(item, sourceRange.startLine, sourceRange.endLine);
+      }
+    }
+  }
+
+  setPreviewSourceRange(element: HTMLElement, startLine: number, endLine: number) {
+    const existingStart = Number(element.dataset.qmdSourceStart);
+    const existingEnd = Number(element.dataset.qmdSourceEnd);
+    if (
+      Number.isFinite(existingStart)
+      && Number.isFinite(existingEnd)
+      && existingEnd - existingStart <= endLine - startLine
+    ) {
+      return;
+    }
+    element.dataset.qmdSourceStart = String(startLine);
+    element.dataset.qmdSourceEnd = String(endLine);
+  }
+
+  annotateRenderedSourceRanges(root: HTMLElement, renderContext: PreviewRenderContext) {
+    const documentRange = mapOutputLineRange(
+      renderContext.outputLineMap,
+      0,
+      renderContext.outputLineMap.length - 1,
+    );
+    if (documentRange) {
+      this.setPreviewSourceRange(root, documentRange.startLine, documentRange.endLine);
+    }
+
+    const elementsByKind = {
+      heading: Array.from(root.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")),
+      paragraph: Array.from(root.querySelectorAll<HTMLElement>("p")).filter(
+        (element) => !element.closest("li, blockquote, figure"),
+      ),
+      "list-item": Array.from(root.querySelectorAll<HTMLElement>("li")),
+      blockquote: Array.from(root.querySelectorAll<HTMLElement>("blockquote")),
+      code: Array.from(root.querySelectorAll<HTMLElement>("pre")),
+      table: Array.from(root.querySelectorAll<HTMLElement>("table")),
+      figure: Array.from(root.querySelectorAll<HTMLElement>("figure")),
+    };
+    const blocks = scanMarkdownBlockRanges(renderContext.markdownLines);
+
+    for (const [kind, elements] of Object.entries(elementsByKind)) {
+      const matchingBlocks = blocks.filter((block) => block.kind === kind);
+      const count = Math.min(elements.length, matchingBlocks.length);
+      for (let index = 0; index < count; index++) {
+        const element = elements[index];
+        const block = matchingBlocks[index];
+        if (!element || !block) continue;
+        const sourceRange = mapOutputLineRange(
+          renderContext.outputLineMap,
+          block.lineStart,
+          block.lineEnd,
+        );
+        if (!sourceRange) continue;
+        this.setPreviewSourceRange(element, sourceRange.startLine, sourceRange.endLine);
+      }
+    }
+  }
+
   async activatePreviewView() {
     this.rememberActiveQmdContext();
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_QMD_PREVIEW).first();
@@ -189,6 +373,7 @@ export default class QmdPreviewPlugin extends Plugin {
     const file = activeView?.file;
     if (!activeView || !file || !isLikelyQmdPath(file.path)) return null;
     this.lastQmdFilePath = file.path;
+    this.lastQmdMarkdownView = activeView;
     return { file, markdownView: activeView };
   }
 
@@ -201,9 +386,20 @@ export default class QmdPreviewPlugin extends Plugin {
     if (active) return active;
     if (!this.lastQmdFilePath) return null;
 
-    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+    const markdownLeaves = this.app.workspace.getLeavesOfType("markdown");
+    const rememberedView = this.lastQmdMarkdownView;
+    if (
+      rememberedView
+      && rememberedView.file?.path === this.lastQmdFilePath
+      && markdownLeaves.some((leaf) => leaf.view === rememberedView)
+    ) {
+      return { file: rememberedView.file, markdownView: rememberedView };
+    }
+
+    for (const leaf of markdownLeaves) {
       const view = leaf.view;
       if (view instanceof MarkdownView && view.file?.path === this.lastQmdFilePath) {
+        this.lastQmdMarkdownView = view;
         return { file: view.file, markdownView: view };
       }
     }
@@ -243,11 +439,19 @@ class QmdPreviewView extends ItemView {
   htmlBlobUrl = "";
   lightboxIndex = 0;
   lastLightboxFocus: HTMLElement | null = null;
+  scrollSyncFrame: number | null = null;
+  scrollSyncReleaseFrame: number | null = null;
+  scrollSyncResizeObserver: ResizeObserver | null = null;
+  scrollSyncReady = false;
+  suppressScrollSync = false;
+  liveFilePath = "";
+  previewSourceAnchors: VisualSourceAnchor[] = [];
 
   toolbarEl: HTMLElement;
   liveButtonEl: HTMLButtonElement;
   quartoButtonEl: HTMLButtonElement;
   openHtmlButtonEl: HTMLButtonElement;
+  scrollSyncButtonEl: HTMLButtonElement;
   statusEl: HTMLElement;
   bodyEl: HTMLElement;
   warningsEl: HTMLElement;
@@ -279,6 +483,9 @@ class QmdPreviewView extends ItemView {
   async onClose() {
     this.plugin.previewViews.delete(this);
     if (this.timer) window.clearTimeout(this.timer);
+    if (this.scrollSyncFrame !== null) window.cancelAnimationFrame(this.scrollSyncFrame);
+    if (this.scrollSyncReleaseFrame !== null) window.cancelAnimationFrame(this.scrollSyncReleaseFrame);
+    this.scrollSyncResizeObserver?.disconnect();
     this.closeLightbox();
     this.removeLiveStyleSheet();
     this.revokeHtmlBlobUrl();
@@ -297,6 +504,7 @@ class QmdPreviewView extends ItemView {
     this.renderLightbox(container);
     this.registerDomEvent(this.bodyEl, "click", (event) => this.handlePreviewImageClick(event));
     this.registerDomEvent(this.bodyEl, "keydown", (event) => this.handlePreviewImageKeydown(event));
+    this.registerDomEvent(this.bodyEl, "scroll", () => this.handlePreviewScroll());
     this.registerDomEvent(window, "keydown", (event) => this.handleLightboxWindowKeydown(event));
     this.setStatus("idle", "打开一个 .qmd 文件后开始预览。");
   }
@@ -339,6 +547,15 @@ class QmdPreviewView extends ItemView {
       void this.openQuartoHtmlInBrowser();
     });
 
+    this.scrollSyncButtonEl = this.toolbarEl.createEl("button", {
+      cls: "qmd-preview-button qmd-preview-icon-button qmd-preview-scroll-sync-button",
+    });
+    setIcon(this.scrollSyncButtonEl, "arrow-up-down");
+    this.scrollSyncButtonEl.addEventListener("click", () => {
+      if (this.mode !== "live") return;
+      void this.plugin.setScrollSyncEnabled(!this.plugin.settings.scrollSyncEnabled);
+    });
+
     const refreshButton = this.toolbarEl.createEl("button", {
       cls: "qmd-preview-button qmd-preview-icon-button qmd-preview-refresh-button",
       attr: {
@@ -351,6 +568,7 @@ class QmdPreviewView extends ItemView {
       this.scheduleLiveRender({ immediate: true, force: true });
     });
     this.updateModeButtons();
+    this.updateScrollSyncButton();
   }
 
   scheduleLiveRender(options: { immediate?: boolean; force?: boolean } = {}) {
@@ -366,6 +584,10 @@ class QmdPreviewView extends ItemView {
     const active = await this.plugin.readActiveQmdContent();
     if (!active) {
       this.lastLiveHash = "";
+      this.liveFilePath = "";
+      this.scrollSyncReady = false;
+      this.previewSourceAnchors = [];
+      this.scrollSyncResizeObserver?.disconnect();
       this.setStatus("idle", "当前没有打开 QMD 文件。");
       this.removeLiveStyleSheet();
       this.revokeHtmlBlobUrl();
@@ -382,6 +604,7 @@ class QmdPreviewView extends ItemView {
 
     const size = new TextEncoder().encode(active.content).length;
     if (!force && size > this.plugin.settings.largeFileThresholdBytes) {
+      this.scrollSyncReady = false;
       this.setStatus("idle", `文件较大（${formatBytes(size)}），已暂停输入时实时渲染。点击“刷新”手动预览。`);
       return;
     }
@@ -390,12 +613,24 @@ class QmdPreviewView extends ItemView {
     const sourceHash = stableHash(`${active.file.path}\n${active.content}\n${liveStyles.css}`);
     if (!force && sourceHash === this.lastLiveHash) return;
 
+    const sameFile = active.file.path === this.liveFilePath;
+    const preservedSourceLine = sameFile ? this.currentPreviewSourceLine() : null;
+    const preservedScrollTop = sameFile ? this.bodyEl.scrollTop : 0;
+    this.scrollSyncReady = false;
     this.setStatus("live-rendering", `正在实时预览：${active.file.path}`);
     const result = transformQmdToObsidianMarkdown(active.content);
     const next = createDiv("qmd-preview-render-buffer");
+    const renderContext: PreviewRenderContext = {
+      filePath: active.file.path,
+      markdownLines: result.markdown.split("\n"),
+      outputLineMap: result.outputLineMap,
+    };
+    this.plugin.previewRenderContexts.set(next, renderContext);
+    this.plugin.beginPreviewRender(renderContext);
 
     try {
       await MarkdownRenderer.render(this.app, result.markdown, next, active.file.path, this);
+      this.plugin.annotateRenderedSourceRanges(next, renderContext);
       if (token !== this.renderToken) return;
       this.replaceLiveStyleSheet(liveStyles.css);
       this.lastLiveHash = sourceHash;
@@ -405,13 +640,21 @@ class QmdPreviewView extends ItemView {
       this.closeLightbox();
       this.bodyEl.empty();
       this.bodyEl.appendChild(next);
+      this.liveFilePath = active.file.path;
+      this.rebuildPreviewSourceAnchors();
+      this.observePreviewLayout(next);
+      this.restorePreviewPosition(preservedSourceLine, preservedScrollTop);
+      this.scrollSyncReady = this.previewSourceAnchors.length > 0;
       this.prepareLivePreviewImages(next);
       this.renderWarnings([...result.warnings, ...liveStyles.warnings]);
       const styleText = liveStyles.sources.length > 0 ? `已应用 ${liveStyles.sources.length} 个样式文件；` : "";
       this.setStatus("live-ready", `${styleText}实时预览不执行代码，最终效果以 Quarto 渲染为准。`);
     } catch (error) {
       if (token !== this.renderToken) return;
+      this.scrollSyncReady = this.mode === "live" && this.previewSourceAnchors.length > 0;
       this.setStatus("error", `实时预览失败：${getErrorMessage(error)}`);
+    } finally {
+      this.plugin.endPreviewRender(renderContext);
     }
   }
 
@@ -472,6 +715,9 @@ class QmdPreviewView extends ItemView {
     this.revokeHtmlBlobUrl();
     this.removeLiveStyleSheet();
     this.closeLightbox();
+    this.scrollSyncReady = false;
+    this.previewSourceAnchors = [];
+    this.scrollSyncResizeObserver?.disconnect();
     this.bodyEl.empty();
     this.htmlBlobUrl = URL.createObjectURL(new Blob([iframeHtml], { type: "text/html" }));
     this.updateOpenHtmlButton();
@@ -549,6 +795,142 @@ class QmdPreviewView extends ItemView {
     this.liveButtonEl.setAttr("aria-pressed", String(this.mode === "live"));
     this.quartoButtonEl.setAttr("aria-pressed", String(this.mode === "quarto"));
     this.updateOpenHtmlButton();
+    this.updateScrollSyncButton();
+  }
+
+  updateScrollSyncButton() {
+    if (!this.scrollSyncButtonEl) return;
+    const available = this.mode === "live";
+    const enabled = this.plugin.settings.scrollSyncEnabled;
+    this.scrollSyncButtonEl.toggleClass("is-active", available && enabled);
+    this.scrollSyncButtonEl.toggleClass("is-disabled", !available);
+    this.scrollSyncButtonEl.setAttr("aria-disabled", String(!available));
+    this.scrollSyncButtonEl.setAttr("aria-pressed", String(enabled));
+    this.scrollSyncButtonEl.setAttr(
+      "aria-label",
+      available
+        ? `同步滚动已${enabled ? "开启" : "关闭"}`
+        : "同步滚动仅支持实时预览",
+    );
+    this.scrollSyncButtonEl.setAttr(
+      "data-tooltip",
+      available
+        ? `同步滚动已${enabled ? "开启" : "关闭"}，点击${enabled ? "关闭" : "开启"}。`
+        : "同步滚动仅支持实时预览。",
+    );
+  }
+
+  handlePreviewScroll() {
+    if (
+      !this.plugin.settings.scrollSyncEnabled
+      || this.mode !== "live"
+      || !this.scrollSyncReady
+      || this.suppressScrollSync
+      || this.scrollSyncFrame !== null
+    ) {
+      return;
+    }
+
+    this.scrollSyncFrame = window.requestAnimationFrame(() => {
+      this.scrollSyncFrame = null;
+      this.syncPreviewScrollToEditor();
+    });
+  }
+
+  syncPreviewScrollToEditor() {
+    if (
+      !this.plugin.settings.scrollSyncEnabled
+      || this.mode !== "live"
+      || !this.scrollSyncReady
+      || this.suppressScrollSync
+    ) {
+      return;
+    }
+
+    const sourceLine = this.currentPreviewSourceLine();
+    if (sourceLine === null) return;
+    const target = this.plugin.getRememberedQmdContext();
+    if (!target?.markdownView || target.file.path !== this.liveFilePath) return;
+
+    const editor = target.markdownView.editor;
+    const line = Math.min(Math.max(0, sourceLine), Math.max(0, editor.lineCount() - 1));
+    editor.scrollIntoView(
+      {
+        from: { line, ch: 0 },
+        to: { line, ch: 0 },
+      },
+      true,
+    );
+  }
+
+  currentPreviewSourceLine(): number | null {
+    if (this.previewSourceAnchors.length === 0) return null;
+    const viewportCenter = this.bodyEl.scrollTop + this.bodyEl.clientHeight / 2;
+    return sourceLineAtPreviewOffset(this.previewSourceAnchors, viewportCenter);
+  }
+
+  rebuildPreviewSourceAnchors() {
+    const root = this.bodyEl.querySelector<HTMLElement>(LIVE_PREVIEW_CSS_SCOPE);
+    if (!root) {
+      this.previewSourceAnchors = [];
+      return;
+    }
+
+    const bodyRect = this.bodyEl.getBoundingClientRect();
+    const anchors: VisualSourceAnchor[] = [];
+    const sourceElements = [
+      ...(root.dataset.qmdSourceStart === undefined ? [] : [root]),
+      ...Array.from(root.querySelectorAll<HTMLElement>("[data-qmd-source-start]")),
+    ];
+    for (const element of sourceElements) {
+      const startLine = Number(element.dataset.qmdSourceStart);
+      const endLine = Number(element.dataset.qmdSourceEnd);
+      const rect = element.getBoundingClientRect();
+      if (
+        !element.isConnected
+        || !Number.isFinite(startLine)
+        || !Number.isFinite(endLine)
+        || rect.height <= 0
+      ) {
+        continue;
+      }
+      anchors.push({
+        startLine,
+        endLine,
+        top: rect.top - bodyRect.top + this.bodyEl.scrollTop,
+        bottom: rect.bottom - bodyRect.top + this.bodyEl.scrollTop,
+      });
+    }
+    this.previewSourceAnchors = dedupeVisualSourceAnchors(anchors);
+  }
+
+  observePreviewLayout(root: HTMLElement) {
+    this.scrollSyncResizeObserver?.disconnect();
+    this.scrollSyncResizeObserver = new ResizeObserver(() => {
+      this.rebuildPreviewSourceAnchors();
+      this.scrollSyncReady = this.mode === "live" && this.previewSourceAnchors.length > 0;
+    });
+    this.scrollSyncResizeObserver.observe(root);
+  }
+
+  restorePreviewPosition(sourceLine: number | null, fallbackScrollTop: number) {
+    const mappedOffset = sourceLine === null
+      ? null
+      : previewOffsetAtSourceLine(this.previewSourceAnchors, sourceLine);
+    const maxScrollTop = Math.max(0, this.bodyEl.scrollHeight - this.bodyEl.clientHeight);
+    const nextScrollTop = mappedOffset === null
+      ? fallbackScrollTop
+      : mappedOffset - this.bodyEl.clientHeight / 2;
+
+    this.suppressScrollSync = true;
+    this.bodyEl.scrollTop = Math.min(maxScrollTop, Math.max(0, nextScrollTop));
+    if (this.scrollSyncReleaseFrame !== null) {
+      window.cancelAnimationFrame(this.scrollSyncReleaseFrame);
+    }
+    this.scrollSyncReleaseFrame = window.requestAnimationFrame(() => {
+      this.scrollSyncReleaseFrame = null;
+      this.suppressScrollSync = false;
+    });
   }
 
   updateOpenHtmlButton() {
@@ -905,6 +1287,17 @@ class QmdPreviewSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.openLivePreviewByDefault = value;
             await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("同步滚动")
+      .setDesc("滚动实时预览时，将同一 QMD 的编辑区定位到对应源码。")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.scrollSyncEnabled)
+          .onChange(async (value) => {
+            await this.plugin.setScrollSyncEnabled(value);
           });
       });
 
