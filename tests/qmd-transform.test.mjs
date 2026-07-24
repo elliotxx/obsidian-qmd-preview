@@ -365,6 +365,24 @@ const {
   assert.equal(sourceLineAtPreviewOffset(anchors, 150), 10);
   assert.equal(previewOffsetAtSourceLine(anchors, 5), 50);
   assert.equal(previewOffsetAtSourceLine(anchors, 10), 160);
+  assert.equal(
+    Math.round(previewOffsetAtSourceLine([
+      { top: 0, bottom: 12087, startLine: 6, endLine: 411 },
+      { top: 678, bottom: 704, startLine: 354, endLine: 354 },
+      { top: 918, bottom: 944, startLine: 72, endLine: 72 },
+      { top: 7617, bottom: 7643, startLine: 292, endLine: 292 },
+      { top: 7785, bottom: 7822, startLine: 316, endLine: 316 },
+    ], 294)),
+    7655,
+  );
+  assert.equal(
+    Math.round(previewOffsetAtSourceLine([
+      { top: 500, bottom: 530, startLine: 37, endLine: 37, inverseReliable: true },
+      { top: 1135, bottom: 1160, startLine: 49, endLine: 49, inverseReliable: false },
+      { top: 1700, bottom: 1730, startLine: 73, endLine: 73, inverseReliable: true },
+    ], 49)),
+    920,
+  );
   assert.deepEqual(
     dedupeVisualSourceAnchors([
       { top: 0, bottom: 20, startLine: 3, endLine: 7 },

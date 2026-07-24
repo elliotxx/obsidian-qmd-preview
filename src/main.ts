@@ -102,6 +102,7 @@ export default class QmdPreviewPlugin extends Plugin {
   previewViews = new Set<QmdPreviewView>();
   previewRenderContexts = new WeakMap<HTMLElement, PreviewRenderContext>();
   activePreviewRenderContexts = new Map<string, PreviewRenderContext[]>();
+  editorScrollSyncLocks = new WeakMap<EditorView, number>();
   lastQmdFilePath: string | null = null;
   lastQmdMarkdownView: MarkdownView | null = null;
 
@@ -144,10 +145,15 @@ export default class QmdPreviewPlugin extends Plugin {
 
     this.registerEditorExtension(
       EditorView.updateListener.of((update: ViewUpdate) => {
-        if (!update.docChanged) return;
-        const active = this.getActiveQmdContext();
-        if (!active) return;
-        for (const view of this.previewViews) view.scheduleLiveRender();
+        if (update.docChanged) {
+          const active = this.getActiveQmdContext();
+          if (active) {
+            for (const view of this.previewViews) view.scheduleLiveRender();
+          }
+        }
+        if (update.viewportChanged) {
+          this.handleEditorViewportChange(update.view);
+        }
       }),
     );
 
@@ -263,6 +269,45 @@ export default class QmdPreviewPlugin extends Plugin {
     return contexts?.[contexts.length - 1];
   }
 
+  handleEditorViewportChange(editorView: EditorView) {
+    if (
+      !this.settings.scrollSyncEnabled
+      || (this.editorScrollSyncLocks.get(editorView) ?? 0) > performance.now()
+    ) {
+      return;
+    }
+
+    const context = this.getQmdContextForEditorView(editorView);
+    if (!context) return;
+    const sourceLine = editorViewportCenterLine(editorView);
+    for (const previewView of this.previewViews) {
+      previewView.handleEditorScroll(context.file.path, sourceLine);
+    }
+  }
+
+  lockEditorScrollSync(editorView: EditorView) {
+    this.editorScrollSyncLocks.set(editorView, performance.now() + 160);
+  }
+
+  getQmdContextForEditorView(
+    editorView: EditorView,
+  ): { file: TFile; markdownView: MarkdownView } | null {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (
+        view instanceof MarkdownView
+        && view.file
+        && isLikelyQmdPath(view.file.path)
+        && (view.editor as typeof view.editor & { cm?: EditorView }).cm === editorView
+      ) {
+        this.lastQmdFilePath = view.file.path;
+        this.lastQmdMarkdownView = view;
+        return { file: view.file, markdownView: view };
+      }
+    }
+    return null;
+  }
+
   annotatePreviewListItems(
     element: HTMLElement,
     context: MarkdownPostProcessorContext,
@@ -300,7 +345,12 @@ export default class QmdPreviewPlugin extends Plugin {
     }
   }
 
-  setPreviewSourceRange(element: HTMLElement, startLine: number, endLine: number) {
+  setPreviewSourceRange(
+    element: HTMLElement,
+    startLine: number,
+    endLine: number,
+    inverseReliable = true,
+  ) {
     const existingStart = Number(element.dataset.qmdSourceStart);
     const existingEnd = Number(element.dataset.qmdSourceEnd);
     if (
@@ -308,10 +358,18 @@ export default class QmdPreviewPlugin extends Plugin {
       && Number.isFinite(existingEnd)
       && existingEnd - existingStart <= endLine - startLine
     ) {
+      if (
+        inverseReliable
+        && existingStart === startLine
+        && existingEnd === endLine
+      ) {
+        element.dataset.qmdInverseReliable = "true";
+      }
       return;
     }
     element.dataset.qmdSourceStart = String(startLine);
     element.dataset.qmdSourceEnd = String(endLine);
+    element.dataset.qmdInverseReliable = String(inverseReliable);
   }
 
   annotateRenderedSourceRanges(root: HTMLElement, renderContext: PreviewRenderContext) {
@@ -321,7 +379,7 @@ export default class QmdPreviewPlugin extends Plugin {
       renderContext.outputLineMap.length - 1,
     );
     if (documentRange) {
-      this.setPreviewSourceRange(root, documentRange.startLine, documentRange.endLine);
+      this.setPreviewSourceRange(root, documentRange.startLine, documentRange.endLine, false);
     }
 
     const elementsByKind = {
@@ -350,7 +408,12 @@ export default class QmdPreviewPlugin extends Plugin {
           block.lineEnd,
         );
         if (!sourceRange) continue;
-        this.setPreviewSourceRange(element, sourceRange.startLine, sourceRange.endLine);
+        this.setPreviewSourceRange(
+          element,
+          sourceRange.startLine,
+          sourceRange.endLine,
+          kind !== "paragraph",
+        );
       }
     }
   }
@@ -441,9 +504,11 @@ class QmdPreviewView extends ItemView {
   lastLightboxFocus: HTMLElement | null = null;
   scrollSyncFrame: number | null = null;
   scrollSyncReleaseFrame: number | null = null;
+  editorScrollSyncFrame: number | null = null;
   scrollSyncResizeObserver: ResizeObserver | null = null;
   scrollSyncReady = false;
   suppressScrollSync = false;
+  pendingEditorSourceLine: number | null = null;
   liveFilePath = "";
   previewSourceAnchors: VisualSourceAnchor[] = [];
 
@@ -485,6 +550,7 @@ class QmdPreviewView extends ItemView {
     if (this.timer) window.clearTimeout(this.timer);
     if (this.scrollSyncFrame !== null) window.cancelAnimationFrame(this.scrollSyncFrame);
     if (this.scrollSyncReleaseFrame !== null) window.cancelAnimationFrame(this.scrollSyncReleaseFrame);
+    if (this.editorScrollSyncFrame !== null) window.cancelAnimationFrame(this.editorScrollSyncFrame);
     this.scrollSyncResizeObserver?.disconnect();
     this.closeLightbox();
     this.removeLiveStyleSheet();
@@ -611,7 +677,11 @@ class QmdPreviewView extends ItemView {
 
     const liveStyles = await loadLivePreviewStyles(this.app, active.file, active.content);
     const sourceHash = stableHash(`${active.file.path}\n${active.content}\n${liveStyles.css}`);
-    if (!force && sourceHash === this.lastLiveHash) return;
+    if (!force && sourceHash === this.lastLiveHash) {
+      this.scrollSyncReady =
+        this.mode === "live" && this.previewSourceAnchors.length > 0;
+      return;
+    }
 
     const sameFile = active.file.path === this.liveFilePath;
     const preservedSourceLine = sameFile ? this.currentPreviewSourceLine() : null;
@@ -854,6 +924,8 @@ class QmdPreviewView extends ItemView {
 
     const editor = target.markdownView.editor;
     const line = Math.min(Math.max(0, sourceLine), Math.max(0, editor.lineCount() - 1));
+    const editorView = (editor as typeof editor & { cm?: EditorView }).cm;
+    if (editorView) this.plugin.lockEditorScrollSync(editorView);
     editor.scrollIntoView(
       {
         from: { line, ch: 0 },
@@ -861,6 +933,35 @@ class QmdPreviewView extends ItemView {
       },
       true,
     );
+  }
+
+  handleEditorScroll(filePath: string, sourceLine: number) {
+    if (
+      !this.plugin.settings.scrollSyncEnabled
+      || this.mode !== "live"
+      || !this.scrollSyncReady
+      || filePath !== this.liveFilePath
+    ) {
+      return;
+    }
+
+    this.pendingEditorSourceLine = sourceLine;
+    if (this.editorScrollSyncFrame !== null) return;
+    this.editorScrollSyncFrame = window.requestAnimationFrame(() => {
+      this.editorScrollSyncFrame = null;
+      const pendingSourceLine = this.pendingEditorSourceLine;
+      this.pendingEditorSourceLine = null;
+      if (pendingSourceLine === null) return;
+      this.syncEditorScrollToPreview(pendingSourceLine);
+    });
+  }
+
+  syncEditorScrollToPreview(sourceLine: number) {
+    const mappedOffset = previewOffsetAtSourceLine(this.previewSourceAnchors, sourceLine);
+    if (mappedOffset === null) return;
+    const maxScrollTop = Math.max(0, this.bodyEl.scrollHeight - this.bodyEl.clientHeight);
+    const nextScrollTop = mappedOffset - this.bodyEl.clientHeight / 2;
+    this.setPreviewScrollTop(Math.min(maxScrollTop, Math.max(0, nextScrollTop)));
   }
 
   currentPreviewSourceLine(): number | null {
@@ -899,6 +1000,7 @@ class QmdPreviewView extends ItemView {
         endLine,
         top: rect.top - bodyRect.top + this.bodyEl.scrollTop,
         bottom: rect.bottom - bodyRect.top + this.bodyEl.scrollTop,
+        inverseReliable: element.dataset.qmdInverseReliable !== "false",
       });
     }
     this.previewSourceAnchors = dedupeVisualSourceAnchors(anchors);
@@ -922,8 +1024,12 @@ class QmdPreviewView extends ItemView {
       ? fallbackScrollTop
       : mappedOffset - this.bodyEl.clientHeight / 2;
 
+    this.setPreviewScrollTop(Math.min(maxScrollTop, Math.max(0, nextScrollTop)));
+  }
+
+  setPreviewScrollTop(scrollTop: number) {
     this.suppressScrollSync = true;
-    this.bodyEl.scrollTop = Math.min(maxScrollTop, Math.max(0, nextScrollTop));
+    this.bodyEl.scrollTop = scrollTop;
     if (this.scrollSyncReleaseFrame !== null) {
       window.cancelAnimationFrame(this.scrollSyncReleaseFrame);
     }
@@ -1704,6 +1810,14 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function editorViewportCenterLine(editorView: EditorView): number {
+  const visibleBlocks = editorView.viewportLineBlocks;
+  const centerBlock = visibleBlocks[Math.floor(visibleBlocks.length / 2)];
+  const position = centerBlock?.from
+    ?? Math.floor((editorView.viewport.from + editorView.viewport.to) / 2);
+  return editorView.state.doc.lineAt(position).number - 1;
 }
 
 function clampNumber(value: number, min: number, max: number, fallback: number): number {

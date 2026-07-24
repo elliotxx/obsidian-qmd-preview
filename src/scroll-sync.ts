@@ -8,6 +8,7 @@ export interface MappedSourceRange {
 export interface VisualSourceAnchor extends MappedSourceRange {
   top: number;
   bottom: number;
+  inverseReliable?: boolean;
 }
 
 export type MarkdownBlockKind =
@@ -193,8 +194,9 @@ export function previewOffsetAtSourceLine(
 ): number | null {
   const valid = normalizeAnchors(anchors);
   if (valid.length === 0 || !Number.isFinite(sourceLine)) return null;
+  const mappingAnchors = inverseMappingAnchors(valid);
 
-  const containing = valid
+  const containing = mappingAnchors
     .filter((anchor) => anchor.startLine <= sourceLine && anchor.endLine >= sourceLine)
     .sort((a, b) => (
       (a.endLine - a.startLine) - (b.endLine - b.startLine)
@@ -208,7 +210,7 @@ export function previewOffsetAtSourceLine(
     return inside.top + progress * Math.max(0, inside.bottom - inside.top);
   }
 
-  const bySource = [...valid].sort((a, b) => a.startLine - b.startLine || a.top - b.top);
+  const bySource = [...mappingAnchors].sort((a, b) => a.startLine - b.startLine || a.top - b.top);
   const before = bySource.filter((anchor) => anchor.startLine <= sourceLine).at(-1);
   const after = bySource.find((anchor) => anchor.startLine > sourceLine);
   if (!before) return bySource[0]?.top ?? null;
@@ -227,7 +229,17 @@ export function dedupeVisualSourceAnchors(
   for (const anchor of anchors) {
     const key = `${anchor.startLine}:${anchor.endLine}`;
     const current = bySourceRange.get(key);
-    if (!current || anchor.bottom - anchor.top > current.bottom - current.top) {
+    if (
+      !current
+      || (
+        anchor.inverseReliable === true
+        && current.inverseReliable !== true
+      )
+      || (
+        anchor.inverseReliable === current.inverseReliable
+        && anchor.bottom - anchor.top > current.bottom - current.top
+      )
+    ) {
       bySourceRange.set(key, anchor);
     }
   }
@@ -253,6 +265,62 @@ function normalizeAnchors(anchors: readonly VisualSourceAnchor[]): VisualSourceA
       && anchor.endLine >= anchor.startLine
     ))
     .sort((a, b) => a.top - b.top || a.bottom - b.bottom || a.startLine - b.startLine);
+}
+
+function inverseMappingAnchors(
+  anchors: readonly VisualSourceAnchor[],
+): VisualSourceAnchor[] {
+  const reliable = anchors.filter((anchor) => anchor.inverseReliable !== false);
+  const monotonic = longestMonotonicAnchorSequence(reliable.length >= 2 ? reliable : anchors);
+  const leafAnchors = monotonic.filter((anchor) => !monotonic.some((candidate) => (
+    candidate !== anchor
+    && candidate.startLine >= anchor.startLine
+    && candidate.endLine <= anchor.endLine
+    && candidate.top >= anchor.top
+    && candidate.bottom <= anchor.bottom
+    && (
+      candidate.startLine > anchor.startLine
+      || candidate.endLine < anchor.endLine
+      || candidate.top > anchor.top
+      || candidate.bottom < anchor.bottom
+    )
+  )));
+  return leafAnchors.length > 0 ? leafAnchors : monotonic;
+}
+
+function longestMonotonicAnchorSequence(
+  anchors: readonly VisualSourceAnchor[],
+): VisualSourceAnchor[] {
+  if (anchors.length < 2) return [...anchors];
+  const lengths = new Array<number>(anchors.length).fill(1);
+  const previous = new Array<number>(anchors.length).fill(-1);
+  let bestIndex = 0;
+
+  for (let index = 0; index < anchors.length; index++) {
+    const current = anchors[index];
+    if (!current) continue;
+    for (let candidateIndex = 0; candidateIndex < index; candidateIndex++) {
+      const candidate = anchors[candidateIndex];
+      if (
+        !candidate
+        || candidate.startLine > current.startLine
+        || lengths[candidateIndex] + 1 <= lengths[index]
+      ) {
+        continue;
+      }
+      lengths[index] = lengths[candidateIndex] + 1;
+      previous[index] = candidateIndex;
+    }
+    if (lengths[index] > lengths[bestIndex]) bestIndex = index;
+  }
+
+  const result: VisualSourceAnchor[] = [];
+  for (let index = bestIndex; index >= 0; index = previous[index] ?? -1) {
+    const anchor = anchors[index];
+    if (anchor) result.push(anchor);
+    if (previous[index] === -1) break;
+  }
+  return result.reverse();
 }
 
 function clamp(value: number, min: number, max: number): number {
