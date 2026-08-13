@@ -24,6 +24,7 @@ await esbuild.build({
 const {
   extractQuartoCssRefs,
   extractYamlFrontmatter,
+  insertListBlockBoundaries,
   isLikelyQmdPath,
   scopeCssToSelector,
   stableHash,
@@ -188,6 +189,69 @@ const {
       { sourceStart: 5, sourceEnd: 5, synthetic: false },
       { sourceStart: 6, sourceEnd: 6, synthetic: false },
     ],
+  );
+}
+
+{
+  const input = [
+    "::: {.progress-item}",
+    "**进展**：",
+    "- 本周正式启动",
+    "- 期望沉淀的**变更平台通用特征**",
+    ":::",
+  ].join("\n");
+  const prepared = insertListBlockBoundaries(input);
+  assert.equal(
+    prepared,
+    [
+      "::: {.progress-item}",
+      "**进展**：",
+      "",
+      "- 本周正式启动",
+      "- 期望沉淀的**变更平台通用特征**",
+      ":::",
+    ].join("\n"),
+  );
+  assert.equal(insertListBlockBoundaries(prepared), prepared);
+}
+
+{
+  const input = [
+    "---",
+    "tags:",
+    "- report",
+    "- weekly",
+    "---",
+    "**进展**：",
+    "- 本周正式启动",
+    "",
+    "```",
+    "- 不是列表",
+    "```",
+    "",
+    "下一步：",
+    "1. 验收",
+  ].join("\n");
+  assert.equal(
+    insertListBlockBoundaries(input),
+    [
+      "---",
+      "tags:",
+      "- report",
+      "- weekly",
+      "---",
+      "**进展**：",
+      "",
+      "- 本周正式启动",
+      "",
+      "```",
+      "- 不是列表",
+      "```",
+      "",
+      "下一步：",
+      "",
+      "1. 验收",
+    ].join("\n"),
   );
 }
 

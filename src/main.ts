@@ -25,6 +25,7 @@ import { parse as parseYaml } from "yaml";
 import {
   extractQuartoCssRefs,
   extractYamlFrontmatter,
+  insertListBlockBoundaries,
   isLikelyQmdPath,
   scopeCssToSelector,
   SourceLineRange,
@@ -760,7 +761,12 @@ class QmdPreviewView extends ItemView {
     this.setStatus("quarto-rendering", `正在使用 Quarto 渲染：${active.file.path}`);
 
     try {
-      const htmlPath = await renderQuartoHtml(this.app, this.plugin.settings, active.file);
+      const htmlPath = await renderQuartoHtml(
+        this.app,
+        this.plugin.settings,
+        active.file,
+        active.content,
+      );
       if (token !== this.renderToken) return;
       await this.showHtmlPreview(htmlPath);
       this.mode = "quarto";
@@ -1567,25 +1573,47 @@ class QuartoMissingModal extends Modal {
   }
 }
 
-async function renderQuartoHtml(app: App, settings: QmdPreviewSettings, file: TFile): Promise<string> {
+async function renderQuartoHtml(
+  app: App,
+  settings: QmdPreviewSettings,
+  file: TFile,
+  content: string,
+): Promise<string> {
   const inputPath = getVaultFileSystemPath(app, file);
+  const sourceDir = path.dirname(inputPath);
   const quartoCommand = resolveQuartoCommand(settings.quartoPath);
   const outputDir = settings.quartoOutputDir
     ? path.resolve(settings.quartoOutputDir)
     : await fs.mkdtemp(path.join(os.tmpdir(), "obsidian-qmd-preview-"));
+  const parsed = path.parse(file.name);
+  const prepared = insertListBlockBoundaries(content);
+  const useTempInput = prepared !== content;
+  const renderPath = useTempInput
+    ? path.join(sourceDir, `.qmd-preview-render-${process.pid}-${Date.now()}.qmd`)
+    : inputPath;
 
   await fs.mkdir(outputDir, { recursive: true });
+  if (useTempInput) {
+    await fs.writeFile(renderPath, prepared, "utf8");
+  }
 
-  await execFileAsync(quartoCommand, [
-    "render",
-    inputPath,
-    "--to",
-    "html",
-    "--output-dir",
-    outputDir,
-  ], path.dirname(inputPath));
+  try {
+    await execFileAsync(quartoCommand, [
+      "render",
+      renderPath,
+      "--to",
+      "html",
+      "--output-dir",
+      outputDir,
+      "--output",
+      `${parsed.name}.html`,
+    ], sourceDir);
+  } finally {
+    if (useTempInput) {
+      await fs.rm(renderPath, { force: true });
+    }
+  }
 
-  const parsed = path.parse(file.name);
   return path.join(outputDir, `${parsed.name}.html`);
 }
 

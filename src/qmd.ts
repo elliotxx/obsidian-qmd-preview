@@ -116,7 +116,7 @@ export function transformQmdToObsidianMarkdown(source: string): TransformResult 
     }
 
     const transformedLine = transformPandocInlineSyntax(line);
-    if (startsUnorderedList(transformedLine) && needsBlockBoundary(out)) {
+    if (startsMarkdownList(transformedLine) && needsBlockBoundary(out)) {
       emit("", sourceLine, sourceLine, true);
     }
     emit(transformedLine, sourceLine);
@@ -143,13 +143,45 @@ function countStrippedFrontmatterLines(source: string): number {
   return (match[0].match(/\n/g) ?? []).length;
 }
 
-function startsUnorderedList(line: string): boolean {
-  return /^\s{0,3}[-+*](?:[ \t]+|$)/.test(line) && !/^\s{0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(line);
+export function insertListBlockBoundaries(source: string): string {
+  const frontmatter = source.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+  const prefix = frontmatter?.[0] ?? "";
+  const body = source.slice(prefix.length);
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = body.split(/\r?\n/);
+  const out: string[] = [];
+  let inCodeFence = false;
+
+  for (const line of lines) {
+    if (inCodeFence) {
+      out.push(line);
+      if (/^\s*```/.test(line)) inCodeFence = false;
+      continue;
+    }
+
+    if (/^\s*```/.test(line)) {
+      inCodeFence = true;
+      out.push(line);
+      continue;
+    }
+
+    if (startsMarkdownList(line) && needsBlockBoundary(out)) {
+      out.push("");
+    }
+    out.push(line);
+  }
+
+  return prefix + out.join(newline);
+}
+
+function startsMarkdownList(line: string): boolean {
+  if (/^\s{0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(line)) return false;
+  return /^\s{0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/.test(line);
 }
 
 function needsBlockBoundary(lines: string[]): boolean {
   const previousLine = lines.at(-1);
-  return previousLine !== undefined && previousLine.trim().length > 0 && !startsUnorderedList(previousLine);
+  return previousLine !== undefined && previousLine.trim().length > 0 && !startsMarkdownList(previousLine);
 }
 
 export function stableHash(value: string): string {
