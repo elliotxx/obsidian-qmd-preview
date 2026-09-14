@@ -11,7 +11,7 @@ This repository contains the `qmd-preview` Obsidian desktop plugin. It lets user
 - Do not commit vault content, local absolute paths, cookies, tokens, screenshots with private data, or generated dependency folders.
 - Do not commit `node_modules/`, `main.js`, or `release/`; they are generated artifacts.
 - Treat live preview as safe by default. Do not add code execution to live preview.
-- Quarto rendering may execute document code and must remain an explicit user action.
+- Quarto rendering and HTML export may execute document code and must remain an explicit user action.
 
 ## Checks
 

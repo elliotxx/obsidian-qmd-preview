@@ -25,6 +25,7 @@ QMD 预览是一个 Obsidian 桌面插件，用于在 Obsidian 中编辑 `.qmd` 
 
 ## 最新进展
 
+- **[2026/09]** 增加「导出 HTML」，可生成便于分享的单文件 HTML。
 - **[2026/06]** 增加 GitHub Release 打包流程，发布 `manifest.json`、`main.js` 和 `styles.css`。
 - **[2026/06]** 增加项目级发版 skill，维护者后续可以按固定流程发版。
 - **[2026/06]** 初始化 QMD 实时预览和 Quarto 渲染兜底能力。
@@ -35,7 +36,7 @@ QMD 预览是一个 Obsidian 桌面插件，用于在 Obsidian 中编辑 `.qmd` 
 - **安全边界清晰**：实时预览不执行 Python、R、Julia、shell 或其他文档代码。
 - **覆盖常用 QMD 语法**：支持代码单元格、callout、Pandoc div、图片题注、图片属性和交叉引用占位。
 - **能使用自定义样式**：读取当前 QMD frontmatter 或上级 `_metadata.yml` 中引用的 CSS，并应用到预览栏。
-- **保留最终渲染入口**：需要确认官方 HTML 输出时，可以手动调用 Quarto 渲染。
+- **保留最终渲染入口**：需要确认官方 HTML 输出时，可以手动调用 Quarto 渲染；需要分享时可以导出单文件 HTML。
 
 ## 快速开始
 
@@ -58,7 +59,7 @@ styles.css
 
 然后在 Obsidian 的第三方插件设置中启用 `QMD Preview`。
 
-> **环境要求**：Obsidian 桌面版。Quarto CLI 是可选项，只在手动使用“Quarto 渲染”时需要。
+> **环境要求**：Obsidian 桌面版。Quarto CLI 是可选项，只在手动使用“Quarto 渲染”或“导出 HTML”时需要。
 
 ### Agent 安装
 
@@ -123,6 +124,8 @@ QMD 预览会把支持的部分转换成 Obsidian 可渲染的预览：
 
 当实时预览不足以判断最终效果时，使用“Quarto 渲染”。插件会调用 `quarto render`，展示生成的 HTML，并与实时预览模式分开。由于 Quarto 可能执行代码，首次渲染前会要求确认。
 
+需要把结果发给别人时，使用“导出 HTML”。插件会生成单文件 HTML：本地图片内嵌进文件，网络图片保持原链接，不会下载远程图片。
+
 ## 安装
 
 ### 手动安装
@@ -155,7 +158,7 @@ npm run install-local -- --vault <VAULT_PATH>
 /Applications/quarto/bin/quarto
 ```
 
-如果本机没有安装 Quarto CLI，点击“Quarto 渲染”时会显示安装引导，不会直接显示底层 `spawn quarto ENOENT` 错误。实时预览不依赖 Quarto，仍可继续使用。
+如果本机没有安装 Quarto CLI，点击“Quarto 渲染”或“导出 HTML”时会显示安装引导，不会直接显示底层 `spawn quarto ENOENT` 错误。实时预览不依赖 Quarto，仍可继续使用。
 
 ## 使用
 
@@ -164,6 +167,7 @@ npm run install-local -- --vault <VAULT_PATH>
 3. 编辑 QMD 文件，侧边栏预览会自动更新。
 4. 写作时使用“实时预览”。
 5. 需要确认 Quarto 官方 HTML 输出时，点击“Quarto 渲染”。
+6. 需要分享时，点击“导出 HTML”，生成单文件 HTML（本地图片内嵌，网络图片保持原链接）。
 
 ## 架构
 
@@ -264,9 +268,9 @@ npm run package
 
 见 [SECURITY.md](SECURITY.md)。
 
-插件不保存账号、密码、Cookie 或 token。实时预览不执行 QMD 代码。手动 Quarto 渲染可能执行文档代码，只应对可信文档使用。
+插件不保存账号、密码、Cookie 或 token。实时预览不执行 QMD 代码。手动 Quarto 渲染和 HTML 导出可能执行文档代码，只应对可信文档使用。
 
-手动 Quarto 渲染会使用 Node.js 文件系统 API 创建临时渲染输出，并通过 `child_process` 调用本机 `quarto` 可执行文件。这些能力只用于用户显式触发的 Quarto 渲染，不用于实时预览。
+手动 Quarto 渲染和 HTML 导出会使用 Node.js 文件系统 API 创建临时渲染输出，并通过 `child_process` 调用本机 `quarto` 可执行文件。HTML 导出还可能写入用户选择的文件。这些能力只用于用户显式触发的操作，不用于实时预览。
 
 ## 致谢
 

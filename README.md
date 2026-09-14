@@ -25,6 +25,7 @@ The live preview does not call Quarto or execute document code. It converts supp
 
 ## Latest News
 
+- **[2026/09]** Added `导出 HTML` to save a shareable single-file HTML.
 - **[2026/06]** Added GitHub Release packaging with `manifest.json`, `main.js`, and `styles.css`.
 - **[2026/06]** Added project-level release skill for repeatable maintainer releases.
 - **[2026/06]** Initial QMD live preview with Quarto render fallback.
@@ -35,7 +36,7 @@ The live preview does not call Quarto or execute document code. It converts supp
 - **Clear safety boundary**: live preview never executes Python, R, Julia, shell, or other document code.
 - **Useful QMD coverage**: preview common Quarto syntax such as code cells, callouts, Pandoc divs, figure captions, image attributes, and cross-reference placeholders.
 - **Style-aware preview**: apply CSS referenced by the current QMD frontmatter or nearby `_metadata.yml` files.
-- **Final output escape hatch**: run Quarto manually when you need to check official HTML output.
+- **Final output escape hatch**: run Quarto manually when you need to check official HTML output, or export a shareable single-file HTML.
 
 ## Quick Start
 
@@ -58,7 +59,7 @@ styles.css
 
 Then enable `QMD Preview` in Obsidian's Community plugins settings.
 
-> **Prerequisites**: Obsidian desktop. Quarto CLI is optional and only needed for manual `Quarto 渲染`.
+> **Prerequisites**: Obsidian desktop. Quarto CLI is optional and only needed for manual `Quarto 渲染` or `导出 HTML`.
 
 ### Agent-assisted install
 
@@ -123,6 +124,8 @@ QMD Preview turns the supported parts into an Obsidian-renderable preview:
 
 Use `Quarto 渲染` when the live preview is not enough. The plugin calls `quarto render`, displays the generated HTML, and keeps it separate from the live preview mode. Because Quarto may execute code, the first render asks for confirmation.
 
+Use `导出 HTML` when you need a shareable single-file HTML. Local images are inlined; remote image URLs stay as links and are not downloaded.
+
 ## Installation
 
 ### Manual installation
@@ -155,7 +158,7 @@ Common locations include:
 /Applications/quarto/bin/quarto
 ```
 
-If Quarto CLI is not installed, `Quarto 渲染` shows an install guide instead of a raw `spawn quarto ENOENT` error. Live preview still works without Quarto.
+If Quarto CLI is not installed, `Quarto 渲染` and `导出 HTML` show an install guide instead of a raw `spawn quarto ENOENT` error. Live preview still works without Quarto.
 
 ## Usage
 
@@ -164,6 +167,7 @@ If Quarto CLI is not installed, `Quarto 渲染` shows an install guide instead o
 3. Edit the QMD file; the side-pane preview updates automatically.
 4. Use `实时预览` for writing feedback.
 5. Use `Quarto 渲染` when you need to check official Quarto HTML output.
+6. Use `导出 HTML` to save a shareable single-file HTML. Local images are inlined; remote image URLs are kept as links.
 
 The plugin UI is currently Chinese. This README keeps the real command and button names so users can find them in Obsidian.
 
@@ -266,9 +270,9 @@ npm run package
 
 See [SECURITY.md](SECURITY.md).
 
-The plugin does not store accounts, passwords, cookies, or tokens. Live preview does not execute QMD code. Manual Quarto render can execute document code and should only be used for documents you trust.
+The plugin does not store accounts, passwords, cookies, or tokens. Live preview does not execute QMD code. Manual Quarto render and HTML export can execute document code and should only be used for documents you trust.
 
-Manual Quarto render uses Node.js filesystem APIs to create temporary render output and uses `child_process` to run the local `quarto` executable. These capabilities are only used for explicit Quarto rendering, not for live preview.
+Manual Quarto render and HTML export use Node.js filesystem APIs to create temporary render output and use `child_process` to run the local `quarto` executable. HTML export may also write a user-chosen file. These capabilities are only used for explicit user actions, not for live preview.
 
 ## Acknowledgments
 

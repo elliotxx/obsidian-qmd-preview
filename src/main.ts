@@ -22,6 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
+import { buildShareableHtml } from "./html-export";
 import {
   extractQuartoCssRefs,
   extractYamlFrontmatter,
@@ -96,6 +97,14 @@ interface FileSystemAdapterWithBasePath {
 
 interface ElectronShell {
   openPath(filePath: string): Promise<string>;
+  showItemInFolder?(filePath: string): void;
+}
+
+interface ElectronSaveDialog {
+  showSaveDialog: (
+    windowOrOptions?: unknown,
+    options?: unknown,
+  ) => Promise<{ canceled?: boolean; filePath?: string }>;
 }
 
 export default class QmdPreviewPlugin extends Plugin {
@@ -141,6 +150,14 @@ export default class QmdPreviewPlugin extends Plugin {
       name: "使用 Quarto 渲染当前文件",
       callback: () => {
         for (const view of this.previewViews) void view.renderWithQuarto();
+      },
+    });
+
+    this.addCommand({
+      id: "export-shareable-html",
+      name: "导出 HTML",
+      callback: () => {
+        for (const view of this.previewViews) void view.exportShareableHtml();
       },
     });
 
@@ -501,6 +518,7 @@ class QmdPreviewView extends ItemView {
   lastSuccessfulHtml = "";
   lastPreviewHtml = "";
   htmlBlobUrl = "";
+  exportInFlight = false;
   lightboxIndex = 0;
   lastLightboxFocus: HTMLElement | null = null;
   scrollSyncFrame: number | null = null;
@@ -599,6 +617,17 @@ class QmdPreviewView extends ItemView {
     });
     this.quartoButtonEl.addEventListener("click", () => {
       void this.renderWithQuarto();
+    });
+
+    const exportButton = this.toolbarEl.createEl("button", {
+      text: "导出 HTML",
+      cls: "qmd-preview-button",
+      attr: {
+        "aria-label": "导出可分享的单文件 HTML",
+      },
+    });
+    exportButton.addEventListener("click", () => {
+      void this.exportShareableHtml();
     });
 
     this.openHtmlButtonEl = this.toolbarEl.createEl("button", {
@@ -729,22 +758,14 @@ class QmdPreviewView extends ItemView {
     }
   }
 
-  async renderWithQuarto() {
-    const active = await this.plugin.readActiveQmdContent();
-    if (!active) {
-      new Notice("QMD 预览：当前没有打开 QMD 文件。");
-      return;
-    }
-
-    const token = ++this.renderToken;
+  async ensureQuartoReady(): Promise<boolean> {
     const quartoCommand = resolveQuartoCommand(this.plugin.settings.quartoPath);
     this.setStatus("quarto-rendering", "正在检查 Quarto CLI。");
     const quartoCheck = await checkQuartoCommand(quartoCommand);
     if (!quartoCheck.available) {
-      if (token !== this.renderToken) return;
       this.setStatus("error", "未找到 Quarto CLI。实时预览仍可使用；如需官方 HTML 输出，请安装 Quarto 或在设置中填写 Quarto CLI 路径。");
       new QuartoMissingModal(this.app, quartoCommand, quartoCheck.message).open();
-      return;
+      return false;
     }
 
     if (!this.plugin.settings.trustedQuartoRender) {
@@ -755,8 +776,22 @@ class QmdPreviewView extends ItemView {
           resolve(true);
         }, () => resolve(false)).open();
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
+
+    return true;
+  }
+
+  async renderWithQuarto() {
+    const active = await this.plugin.readActiveQmdContent();
+    if (!active) {
+      new Notice("QMD 预览：当前没有打开 QMD 文件。");
+      return;
+    }
+
+    const token = ++this.renderToken;
+    const ready = await this.ensureQuartoReady();
+    if (!ready || token !== this.renderToken) return;
 
     this.setStatus("quarto-rendering", `正在使用 Quarto 渲染：${active.file.path}`);
 
@@ -776,6 +811,54 @@ class QmdPreviewView extends ItemView {
       if (token !== this.renderToken) return;
       this.setStatus("error", `Quarto 渲染失败：${getErrorMessage(error)}`);
       if (this.lastSuccessfulHtml) await this.showHtmlPreview(this.lastSuccessfulHtml);
+    }
+  }
+
+  async exportShareableHtml() {
+    if (this.exportInFlight) {
+      new Notice("QMD 预览：正在导出 HTML。");
+      return;
+    }
+
+    const active = await this.plugin.readActiveQmdContent();
+    if (!active) {
+      new Notice("QMD 预览：当前没有打开 QMD 文件。");
+      return;
+    }
+
+    this.exportInFlight = true;
+    try {
+      const ready = await this.ensureQuartoReady();
+      if (!ready) return;
+
+      this.setStatus("quarto-rendering", `正在导出 HTML：${active.file.path}`);
+      const htmlPath = await renderQuartoHtml(
+        this.app,
+        this.plugin.settings,
+        active.file,
+        active.content,
+      );
+      const rawHtml = await fs.readFile(htmlPath, "utf8");
+      const shareableHtml = await buildShareableHtml(rawHtml, path.dirname(htmlPath));
+      const defaultPath = await defaultHtmlExportPath(this.app, active.file);
+      const chosenPath = await chooseHtmlSavePath(defaultPath);
+      if (chosenPath === null) {
+        this.setStatus("idle", "已取消导出 HTML。");
+        new Notice("QMD 预览：已取消导出 HTML。");
+        return;
+      }
+
+      const outputPath = chosenPath || defaultPath;
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.writeFile(outputPath, shareableHtml, "utf8");
+      this.setStatus("quarto-ready", `已导出 HTML：${outputPath}`);
+      new Notice(`QMD 预览：已导出 HTML：${outputPath}`);
+      revealInFolder(outputPath);
+    } catch (error) {
+      this.setStatus("error", `导出 HTML 失败：${getErrorMessage(error)}`);
+      new Notice(`QMD 预览：导出 HTML 失败：${getErrorMessage(error)}`);
+    } finally {
+      this.exportInFlight = false;
     }
   }
 
@@ -1665,6 +1748,71 @@ async function writePreviewHtml(sourceHtmlPath: string, html: string): Promise<s
   const previewPath = path.join(path.dirname(sourceHtmlPath), `${basename}.qmd-preview${extension}`);
   await fs.writeFile(previewPath, html, "utf8");
   return previewPath;
+}
+
+async function defaultHtmlExportPath(app: App, file: TFile): Promise<string> {
+  const name = `${path.parse(file.name).name}.html`;
+  const downloadsDir = path.join(os.homedir(), "Downloads");
+  try {
+    const stat = await fs.stat(downloadsDir);
+    if (stat.isDirectory()) return path.join(downloadsDir, name);
+  } catch {
+    // Fall back to the QMD file directory.
+  }
+  return path.join(path.dirname(getVaultFileSystemPath(app, file)), name);
+}
+
+async function chooseHtmlSavePath(defaultPath: string): Promise<string | null | undefined> {
+  const dialog = getElectronSaveDialog();
+  if (!dialog) return undefined;
+
+  const options = {
+    title: "导出 HTML",
+    defaultPath,
+    filters: [{ name: "HTML", extensions: ["html"] }],
+  };
+
+  try {
+    const currentWindow = getElectronCurrentWindow();
+    const result = currentWindow
+      ? await dialog.showSaveDialog(currentWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (result?.canceled) return null;
+    return result?.filePath || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getElectronSaveDialog(): ElectronSaveDialog | null {
+  try {
+    const electron = require("electron") as {
+      dialog?: ElectronSaveDialog;
+      remote?: { dialog?: ElectronSaveDialog };
+    };
+    return electron.dialog ?? electron.remote?.dialog ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getElectronCurrentWindow(): unknown {
+  try {
+    const electron = require("electron") as {
+      remote?: { getCurrentWindow?: () => unknown };
+    };
+    return electron.remote?.getCurrentWindow?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function revealInFolder(filePath: string) {
+  try {
+    getElectronShell()?.showItemInFolder?.(filePath);
+  } catch {
+    // Revealing the file is optional.
+  }
 }
 
 async function openLocalFile(filePath: string): Promise<string> {

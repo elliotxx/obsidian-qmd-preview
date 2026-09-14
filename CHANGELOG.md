@@ -1,3 +1,9 @@
+## Unreleased
+
+- 新增「导出 HTML」：生成便于分享的单文件 HTML。本地图片内嵌为 data URI，网络图片保持原链接，不下载远程资源。
+- 导出时内嵌 Quarto 的 `type="module"` 脚本及其相对 import，避免单独打开 HTML 时因临时目录路径失效而打不开。
+- 修复内嵌脚本时 `String.replace` 把源码里的 `$&` 当成替换符、提前闭合 `</script>`、页面变成一坨 JS 源码的问题。
+
 ## 0.1.8
 
 - 修复 Quarto HTML 预览中段落后紧跟列表被并进同一段落、换行被折叠的问题。

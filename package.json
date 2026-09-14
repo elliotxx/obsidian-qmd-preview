@@ -8,7 +8,7 @@
     "dev": "node esbuild.config.mjs --watch",
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "lint": "eslint src tests --ext .ts,.mjs",
-    "test": "npm run build && node tests/qmd-transform.test.mjs",
+    "test": "npm run build && node tests/qmd-transform.test.mjs && node tests/html-export.test.mjs",
     "package": "npm run test && node scripts/package-release.mjs",
     "release:validate": "node scripts/validate-release.mjs",
     "release:notes": "node scripts/release-notes.mjs",
